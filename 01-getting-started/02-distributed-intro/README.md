@@ -1,4 +1,4 @@
-# 4. Distributed Training Intro with DDP
+# 2. Distributed Training Intro with DDP
 
 This lesson launches your first multi-GPU training job using PyTorch Distributed Data Parallel (DDP) on the INF0090 cluster.
 
@@ -39,7 +39,7 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm7
 ### Via SLURM batch
 
 ```bash
-cd 01-getting-started/04-distributed-intro
+cd 01-getting-started/02-distributed-intro
 sbatch submit_ddp.sh
 ```
 
