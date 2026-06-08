@@ -17,3 +17,4 @@ This module covers training Artificial Intelligence models on HPC clusters. You 
 **Lesson Overview**
 
 - [01-getting-started](01-getting-started/README.md): cluster inspection, GPU topology, and a single-GPU MNIST training baseline.
+- [02-distributed-training](02-distributed-training/README.md): multi-GPU parallelism strategies (DDP, Pipeline, Tensor), PyTorch Lightning DDP, FSDP for large models, and performance profiling with AMD/NVIDIA tools.

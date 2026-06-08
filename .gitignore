@@ -1,0 +1,21 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+
+# Build / virtual env (optional common defaults)
+.venv/
+venv/
+
+# PyTorch / Lightning artifacts
+*.pt
+*.pth
+
+# Profiler traces / viz outputs
+traces/
+*.json
+*.gif
+*.png
+*.csv
+
+# Apptainer/Singularity images
+*.sif
