@@ -10,49 +10,15 @@ All three training scripts share two files: `model.py` and `dataset.py`.
 
 ### The Model — `model.py`
 
-```python
- class TineLLM(nn.Module):
-     def __init__(
-         self,
-         vocab_size=65,
-         d_model=128,
-         nhead=4,
-         num_layers=2,
-         dim_feedforward=256,
-     ):
-         super().__init__()
-         self.embedding = nn.Embedding(vocab_size, d_model)
-         self.pos_encoder = PositionalEncoding(d_model)
-         encoder_layer = nn.TransformerEncoderLayer(
-             d_model=d_model,
-             nhead=nhead,
-             dim_feedforward=dim_feedforward,
-             batch_first=True,
-         )
-         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-         # Slightly reduces parameter count vs a biased projection.
-         self.linear = nn.Linear(d_model, vocab_size, bias=False)
-```
+This lesson uses a **small GPT-like Transformer** called **`TineLLM`** so it’s practical to run on just a couple of GPUs.
 
-This is a **decoder-only Transformer** (GPT-like). Key design choices:
+In plain terms:
+- The model reads a sequence of characters and produces a score for **every next character** at every position.
+- The Transformer’s **self-attention** lets each position “look at” earlier characters.
+- The **causal mask** blocks attention to future characters (so the model can’t cheat during training).
+- A final linear layer converts the Transformer’s internal representation back into vocabulary-sized character scores.
 
-This lesson uses **`TineLLM`** defaults tuned to keep the parameter/weight footprint small so the model is practical to run on a couple of GPUs.
-
-| Component | What it does | Why this choice |
-|-----------|-------------|-----------------|
-| `nn.Embedding(vocab_size, d_model)` | Maps each character to a 128-dim vector | Character-level tokenization (vocab_size ≈ 65) |
-| `PositionalEncoding` | Adds sinusoidal position signals | Transformers have no inherent order awareness |
-| `nn.TransformerEncoder` with `is_causal=True` | Stack of self-attention layers with causal mask | The causal mask ensures position *i* can only attend to positions ≤ *i* — this is what makes it GPT-like (autoregressive) |
-| `nn.Linear(d_model, vocab_size, bias=False)` | Projects hidden states back to character probabilities | Standard language model head |
-
-The causal mask is cached once (based on `max_seq_len`) and then sliced for each batch:
-
-```python
- mask = self.causal_mask[:seq_len, :seq_len]
- output = self.transformer_encoder(src, mask=mask, is_causal=True)
-```
-
-This upper-triangular matrix of `-inf` values prevents "looking into the future" during training — exactly how GPT works.
+The defaults are intentionally small (`d_model=128`, `num_layers=2`) and the output head uses `bias=False` to slightly reduce the number of parameters.
 
 ### The Dataset — `dataset.py`
 
@@ -69,7 +35,7 @@ class ShakespeareDataset(Dataset):
 
 The dataset tokenizes Shakespeare's complete works at the **character level** (~65 unique characters). Each sample is a sliding window of `seq_len` characters, where the target is the same window shifted by one position (next-character prediction).
 
-The distributed-aware download pattern is important: only **rank 0** downloads the file, and `dist.barrier()` ensures all other ranks wait until the download completes before trying to read it. Without this barrier, other ranks may crash trying to read a file that doesn't exist yet.
+Only **rank 0** downloads the text file. Other ranks wait at a barrier so they never try to read `shakespeare.txt` before it exists.
 
 ---
 
@@ -304,28 +270,15 @@ model = parallelize_module(model, device_mesh, parallelize_plan)
 
 - **`ColwiseParallel`** on the output `nn.Linear`: The weight matrix is split column-wise. GPU 0 holds `d_model × 33` and GPU 1 holds `d_model × 32` columns of the output projection. Each GPU produces a **slice** of the output logits along the vocab dimension.
 
-### Step 3: Reconstruct Full Output for Loss Computation
+### Step 3: Compute Loss Across Shards
 
-Because `ColwiseParallel` on the linear layer gives each GPU only a **partial slice** of the vocab logits (e.g., GPU 0 gets positions 0-32, GPU 1 gets positions 33-64), we must reconstruct the full output before computing cross-entropy loss:
+Each GPU only produces a **slice** of the vocabulary scores, so no single GPU has the full set of logits.
 
-```python
-if tp_applied:
-    flat = outputs.reshape(-1, outputs.shape[-1])
-    max_vocab = (vocab_size + world_size - 1) // world_size  # ceil(65/2) = 33
-    padded = torch.zeros(flat.shape[0], max_vocab, device=flat.device)
-    padded[:, :flat.shape[-1]] = flat
-    gathered = [torch.zeros_like(padded) for _ in range(world_size)]
-    dist.all_gather(gathered, padded)
-    full_output = torch.cat(gathered, dim=-1)[:, :vocab_size]
-    loss = criterion(full_output, labels.view(-1))
-```
+Instead of building the full `(vocab_size)` tensor everywhere, the code computes cross-entropy using distributed math:
+- It combines the per-rank parts of the **log-sum-exp denominator** using `all_reduce`.
+- It also combines the **target logit** (the logit for the correct next character) across ranks.
 
-This works as follows:
-1. **Flatten** the batch and sequence dims: `[B, S, V_local]` → `[B*S, V_local]`
-2. **Pad** each GPU's partial output to `max_vocab=33` (so both have equal size for `all_gather`)
-3. **AllGather** across GPUs: each GPU now has all 33+33=66 values along the vocab dim
-4. **Concatenate** along `dim=-1` and **trim** to `vocab_size=65` (removing the extra padding)
-5. Compute cross-entropy loss on the reconstructed full output
+Conceptually: *we still get the same cross-entropy loss as single-GPU training, but we never need to materialize the entire vocab logits on every GPU.*
 
 ### Why TP Requires High Bandwidth
 
@@ -373,7 +326,13 @@ Epoch 1/1 | loss: 4.23xx | acc: 0.0x% | time: 12.3s
 
 #### Container + rendezvous behavior
 
-The submit scripts run the training inside Apptainer (`/home/shared/rocm-pytorch.sif`). They also load **OpenMPI** (for `srun --mpi=pmix`) and use `env://` rendezvous for DDP/TP (they set `MASTER_ADDR`, `MASTER_PORT`, and `TORCH_DISTRIBUTED_INIT_METHOD=env://`).
+The submit scripts run the training inside Apptainer (`/opt/shared/rocm-pytorch.sif`).
+
+`submit_ddp.sh` and `submit_tp.sh` set up DDP/TP rendezvous using `env://` (they export `MASTER_ADDR`, `MASTER_PORT`, and `TORCH_DISTRIBUTED_INIT_METHOD=env://`).
+
+`submit_pp.sh` and `submit_tp.sh` additionally load an OpenMPI module because they use `srun --mpi=pmix`.
+
+Optional: you can bypass Apptainer and run with your local venv by setting `USE_VENV=1` when submitting (works for `submit_ddp.sh`, `submit_pp.sh`, and `submit_tp.sh`).
 
 ### Locally (2+ GPUs, no SLURM)
 

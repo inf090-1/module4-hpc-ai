@@ -6,10 +6,10 @@ This module covers distributed training at scale through four progressive lesson
 
 ## The Shared Architecture
 
-All examples train a **GPT-like autoregressive Language Model** (decoder-only Transformer with causal masking) on the **Tiny Shakespeare** dataset:
+All examples train a **GPT-like autoregressive Language Model** (decoder-only Transformer with causal masking) on the **Tiny Shakespeare** dataset.
 
 - **Dataset**: A ~1MB text file of Shakespeare's works, tokenized at the **character level** (vocab size ~65). Each training sample is a sliding window of characters; the target is the same window shifted by one position (next-character prediction).
-- **Model (`SimpleLLM`)**: A 4-layer Transformer encoder with causal masking — the same architecture pattern as GPT. Uses `nn.TransformerEncoder` with `is_causal=True` and a generated square subsequent mask to prevent attending to future positions.
+- **Model (Lesson 1: `TineLLM`)**: A small GPT-like decoder-only Transformer. It uses causal masking so each position can only use earlier characters. The defaults are tuned to keep the model small enough for the course to run on a couple of GPUs.
 - **MassiveModel** (Lesson 3 only): A scaled-up version (`d_model=4096`, 12 layers, `dim_feedforward=16384`) designed to exceed single-GPU VRAM, demonstrating why FSDP is needed.
 
 > **Cluster note**: Pre-copy `shakespeare.txt` into each lesson directory on the cluster. Compute nodes may lack internet access for auto-download.
@@ -50,6 +50,14 @@ Lesson 4: "How do I make it faster?"
 
 ### Parallelism Strategies at a Glance
 
+If you’re visual-thinking, here’s a common “3D parallelism” picture. It shows how the same training job can be split three ways:
+
+- **Data Parallel (DDP)**: you have multiple copies of the model and split the *data* (different batches) across GPUs.
+- **Tensor Parallel (TP)**: you split *one layer’s computation* across GPUs (each GPU holds only a slice of the layer tensors).
+- **Pipeline Parallel (PP)**: you split the *model by layers* into stages and stream micro-batches through the stages.
+
+![3D parallelism (data / tensor / pipeline)](https://www.deepspeed.ai/assets/images/3d-parallelism.png)
+
 | | DDP | PP | TP | FSDP |
 |--|-----|-----|-----|------|
 | **What is split** | Data | Model (by layer) | Layers (by tensor) | Model state (params, grads, optimizer) |
@@ -88,5 +96,5 @@ rsync -avz 02-distributed-training/ g1:~/workspace/courses/INFO090/module4-hpc-a
 
 ## Known Issues
 
-- **TP vocab split**: With `vocab_size=65` and 2 GPUs, `parallelize_module` with `ColwiseParallel` produces unequal output dims (33/32). The `all_gather` + padding fix in `train_tp.py` reconstructs the full vocab output before loss computation.
+- **TP stability**: Tensor Parallelism is sensitive to shapes and to how loss is computed across vocab shards. If you hit a runtime error, try lowering `--batch_size` and `--seq_len` first; then re-check the TP loss logic.
 - **Node recovery**: If SLURM jobs fail hard, node `g1` may go to "down" state. Run `scontrol update nodename=g1 state=resume` (requires sudo) or wait for auto-recovery.

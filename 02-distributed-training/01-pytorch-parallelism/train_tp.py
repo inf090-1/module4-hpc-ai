@@ -6,6 +6,7 @@ import time
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+import torch.distributed.nn.functional as dist_nnF
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
 from torch.utils.data import DataLoader, DistributedSampler
@@ -114,7 +115,9 @@ def train(
         print(f"Tensor Parallelism applied: embedding + linear sharded across {world_size} GPUs")
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    # Disable foreach: the TP sharded params become DTensors while other params are regular tensors.
+    # Adam's foreach kernels can't handle mixed Tensor/DTensor lists.
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, foreach=False)
 
     max_vocab = (vocab_size + world_size - 1) // world_size
 
@@ -143,30 +146,100 @@ def train(
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
                 outputs = model(inputs)  # partial vocab logits
 
-                flat = outputs.reshape(-1, outputs.shape[-1])
+                # Reconstruct full vocab logits from TP shards.
+                # Use labels.shape for (B, S) to guarantee the loss target aligns.
+                bsz, seqlen = labels.shape
+                local_vocab = outputs.shape[-1]
 
-                # Pad to a common vocab size for all_gather.
-                if preallocated_padded is None or preallocated_padded.shape[0] != flat.shape[0]:
-                    preallocated_padded = torch.zeros(flat.shape[0], max_vocab, device=device, dtype=flat.dtype)
-                    preallocated_gathered = [
-                        torch.empty_like(preallocated_padded) for _ in range(world_size)
-                    ]
+                # Safety: in practice, TP+Transformer wrappers should preserve sequence length.
+                # If we see a mismatch (e.g. outputs S != labels S), slice outputs to labels length
+                # so both assignment and loss computation stay aligned.
+                if outputs.shape[1] != seqlen:
+                    if outputs.shape[1] < seqlen:
+                        raise RuntimeError(
+                            f"TP model returned shorter sequence length than labels: outputs.S={outputs.shape[1]} labels.S={seqlen}"
+                        )
+                    outputs = outputs[:, :seqlen, :]
 
-                preallocated_padded.zero_()
-                preallocated_padded[:, : flat.shape[-1]] = flat
+                outputs_fp32 = outputs.float()  # [B, S, local_vocab]
 
-                dist.all_gather(preallocated_gathered, preallocated_padded)
-                full_output = torch.cat(preallocated_gathered, dim=-1)[:, :vocab_size].to(torch.float32)
+                # ---- Distributed cross-entropy (TP-safe, no autograd-breaking all_gather) ----
+                # Each rank owns a contiguous slice of vocab indices:
+                #   slice_start = rank * max_vocab
+                # and we compute global log-sum-exp + target logit using all_reduce.
+                slice_start = rank * max_vocab
+                local_vocab = outputs_fp32.shape[-1]
 
-                loss = criterion(full_output, labels.view(-1))
-                pred = full_output.argmax(dim=-1).view_as(labels)
-                correct = (pred == labels).sum()
+                # Mask out invalid vocab indices in the last shard (those beyond vocab_size).
+                vocab_positions = torch.arange(local_vocab, device=device) + slice_start
+                invalid = vocab_positions >= vocab_size
+                if invalid.any():
+                    outputs_fp32 = outputs_fp32.masked_fill(invalid.unsqueeze(0).unsqueeze(0), -1e9)
+
+                # log_denom = log(sum(exp(logits_global)))
+                max_local = outputs_fp32.max(dim=-1).values  # [B, S]
+                max_global = dist_nnF.all_reduce(max_local, op=dist.ReduceOp.MAX)
+
+                exp_shifted = torch.exp(outputs_fp32 - max_global.unsqueeze(-1))
+                sum_exp_local = exp_shifted.sum(dim=-1)  # [B, S]
+                sum_exp_global = dist_nnF.all_reduce(sum_exp_local, op=dist.ReduceOp.SUM)
+                log_denom = torch.log(sum_exp_global) + max_global  # [B, S]
+
+                # target_logit: only the owning rank contributes; we select it via MAX-reduction.
+                local_labels = labels - slice_start  # [B, S]
+                mask_owner = (labels >= slice_start) & (labels < slice_start + local_vocab)
+
+                local_labels_clamped = local_labels.clamp(0, local_vocab - 1)
+                target_local = outputs_fp32.gather(
+                    -1, local_labels_clamped.unsqueeze(-1)
+                ).squeeze(-1)  # [B, S]
+
+                target_local = torch.where(
+                    mask_owner,
+                    target_local,
+                    torch.full_like(target_local, -1e9),
+                )
+                target_logit = dist_nnF.all_reduce(target_local, op=dist.ReduceOp.MAX)  # [B, S]
+
+                loss_per_token = log_denom - target_logit  # [B, S]
+                loss = loss_per_token.mean()
+
+                # ---- Accuracy (no grad): reconstruct full logits for argmax ----
+                with torch.no_grad():
+                    if (
+                        preallocated_padded is None
+                        or preallocated_padded.shape[0] != bsz
+                        or preallocated_padded.shape[1] != seqlen
+                        or preallocated_padded.shape[2] != max_vocab
+                    ):
+                        preallocated_padded = torch.zeros(
+                            bsz,
+                            seqlen,
+                            max_vocab,
+                            device=device,
+                            dtype=outputs_fp32.dtype,
+                        )
+                        preallocated_gathered = [
+                            torch.empty_like(preallocated_padded) for _ in range(world_size)
+                        ]
+
+                    preallocated_padded.zero_()
+                    preallocated_padded[:, :, :local_vocab] = outputs_fp32
+
+                    dist.all_gather(preallocated_gathered, preallocated_padded)
+                    full_output = (
+                        torch.cat(preallocated_gathered, dim=-1)[:, :, :vocab_size].to(torch.float32)
+                    )
+                    pred = full_output.argmax(dim=-1)
+                    correct = (pred == labels).sum()
+
                 tokens = labels.numel()
 
             loss.backward()
             optimizer.step()
 
-            epoch_loss_sum += loss.detach() * tokens
+            # Accumulate summed loss over all tokens on this rank.
+            epoch_loss_sum += loss_per_token.detach().sum()
             epoch_correct += correct.detach().to(torch.float32)
             epoch_tokens += tokens
 

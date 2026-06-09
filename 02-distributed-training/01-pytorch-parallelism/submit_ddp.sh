@@ -5,7 +5,7 @@
 #SBATCH --ntasks-per-node=2
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-node=2
-#SBATCH --time=00:15:00
+#SBATCH --time=00:30:00
 #SBATCH --output=ddp-%j.out
 
 set -euo pipefail
@@ -13,16 +13,7 @@ set -euo pipefail
 WORKDIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
 cd "$WORKDIR"
 
-# --- Environment setup (matches typical NCCL/DDP SLURM patterns) ---
-if command -v module >/dev/null 2>&1; then
-  module purge || true
-  module load openmpi || true
-fi
-
-export OMP_NUM_THREADS=1
-export NCCL_DEBUG=WARN
-export NCCL_ASYNC_ERROR_HANDLING=1
-export CUDA_LAUNCH_BLOCKING=0
+export OMP_NUM_THREADS=4
 
 # --- Rendezvous for PyTorch DDP (env://) ---
 if [[ -n "${SLURM_NODELIST:-}" ]]; then
@@ -34,7 +25,17 @@ export MASTER_PORT=29500
 export TORCH_DISTRIBUTED_INIT_METHOD="env://"
 
 
-srun --mpi=pmix apptainer exec --rocm \
-  --bind "$WORKDIR:$WORKDIR" --pwd "$WORKDIR" \
-  /home/shared/rocm-pytorch.sif \
-  python -u train_ddp.py --epochs 1 --max_batches 1 --seq_len 32 --batch_size 16 --num_workers 0
+# Optional non-container execution.
+# Usage: `USE_VENV=1 sbatch submit_ddp.sh`
+if [[ "${USE_VENV:-0}" == "1" ]]; then
+  if [ -f "$HOME/venv-pytorch/bin/activate" ]; then
+    # shellcheck source=/dev/null
+    source "$HOME/venv-pytorch/bin/activate"
+  fi
+  srun python -u train_ddp.py --epochs 20 --seq_len 64 --batch_size 64 --num_workers 2
+else
+  srun apptainer exec --rocm \
+    --bind "$WORKDIR:$WORKDIR" --pwd "$WORKDIR" \
+    /opt/shared/rocm-pytorch.sif \
+    python -u train_ddp.py --epochs 20 --seq_len 64 --batch_size 64 --num_workers 2
+fi
