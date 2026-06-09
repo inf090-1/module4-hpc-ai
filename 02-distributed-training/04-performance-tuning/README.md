@@ -108,7 +108,7 @@ This reduces memory fragmentation and can improve training speed by ~5% in some 
 
 ### NVTX/ROCTX Markers — Annotating the Profile
 
-The `SimpleLLM` in this lesson is instrumented with **NVTX markers** — named ranges that appear in profiler output:
+The `TineLLM` in this lesson is instrumented with **NVTX markers** — named ranges that appear in profiler output:
 
 ```python
 def forward(self, src):
@@ -336,6 +336,10 @@ Open the output in Perfetto UI. Look for:
 cd 02-distributed-training/04-performance-tuning
 sbatch submit_tuning.sh
 ```
+
+`submit_tuning.sh` runs inside Apptainer (`/opt/shared/rocm-pytorch.sif`).
+
+Optional: bypass Apptainer and run with your local venv by setting `USE_VENV=1`.
 
 ### Manual runs
 

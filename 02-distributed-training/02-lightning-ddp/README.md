@@ -44,7 +44,7 @@ class LLMLightning(L.LightningModule):
     def __init__(self, vocab_size=65, lr=1e-3):
         super().__init__()
         self.save_hyperparameters()          # stores vocab_size, lr as self.hparams
-        self.model = SimpleLLM(vocab_size=vocab_size)
+        self.model = TineLLM(vocab_size=vocab_size, max_seq_len=64)
         self.loss_fn = nn.CrossEntropyLoss()
         self.vocab_size = vocab_size
 ```
@@ -159,9 +159,9 @@ The training logic is identical — same model, same loss, same optimizer. Light
 
 | File | Description |
 |------|-------------|
-| `train_lightning.py` | Lightning training script with `SimpleLLM` + `ShakespeareDataset` |
-| `submit_lightning.sh` | SLURM batch script (ROCm/MI300X) |
-| `submit_lightning_cuda.sh` | SLURM batch script (NVIDIA/CUDA variant) |
+| `train_lightning.py` | Lightning training script with `TineLLM` + `ShakespeareDataset` |
+| `submit_lightning.sh` | SLURM batch script (runs in Apptainer `/opt/shared/rocm-pytorch.sif`) |
+| `submit_lightning_cuda.sh` | SLURM batch script (runs in Apptainer `/opt/shared/rocm-pytorch.sif`) |
 
 ---
 
@@ -174,11 +174,23 @@ cd 02-distributed-training/02-lightning-ddp
 sbatch submit_lightning.sh
 ```
 
+These submit scripts run inside Apptainer using `/opt/shared/rocm-pytorch.sif`.
+
+Optional: bypass Apptainer and run with your local venv by setting `USE_VENV=1`.
+
 ### Via srun (interactive)
 
 ```bash
-srun -p gpu --gpus=2 --ntasks=2 --cpus-per-task=4 --time=00:10:00 \
-  bash -lc 'source ~/venv-pytorch/bin/activate; python train_lightning.py --devices 2 --strategy ddp'
+export MASTER_ADDR=$(scontrol show hostnames "$SLURM_NODELIST" | head -n 1)
+export MASTER_PORT=29500
+export TORCH_DISTRIBUTED_INIT_METHOD="env://"
+
+srun --mpi=pmix \
+  -p gpu --gpus=2 --ntasks=2 --cpus-per-task=4 --time=00:10:00 \
+  apptainer exec --rocm \
+    --bind "$PWD:$PWD" --pwd "$PWD" \
+    /opt/shared/rocm-pytorch.sif \
+    python -u train_lightning.py --devices 2 --strategy ddp
 ```
 
 ### Single GPU (no distributed)

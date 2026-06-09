@@ -43,29 +43,58 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:x.size(1)].transpose(0, 1)
         return x
 
-class SimpleLLM(nn.Module):
-    def __init__(self, vocab_size=65, d_model=512, nhead=8, num_layers=4):
+class TineLLM(nn.Module):
+    """Tiny GPT-like decoder-only Transformer (low weight RAM)."""
+
+    def __init__(
+        self,
+        vocab_size: int = 65,
+        d_model: int = 128,
+        nhead: int = 4,
+        num_layers: int = 2,
+        dim_feedforward: int = 256,
+        dropout: float = 0.0,
+        max_seq_len: int = 64,
+    ):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.pos_encoder = PositionalEncoding(d_model)
-        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+        )
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.linear = nn.Linear(d_model, vocab_size)
+
+        # Bias omitted to slightly reduce parameter count.
+        self.linear = nn.Linear(d_model, vocab_size, bias=False)
+
+        mask = nn.Transformer.generate_square_subsequent_mask(max_seq_len)
+        self.register_buffer("causal_mask", mask)
 
     def forward(self, src):
-        src = self.embedding(src)
+        # src: [B, S]
+        src = self.embedding(src)  # [B, S, d_model]
         src = self.pos_encoder(src)
+
         seq_len = src.size(1)
-        mask = nn.Transformer.generate_square_subsequent_mask(seq_len).to(src.device)
+        if seq_len > self.causal_mask.size(0):
+            mask = nn.Transformer.generate_square_subsequent_mask(seq_len).to(src.device)
+        else:
+            mask = self.causal_mask[:seq_len, :seq_len]
+
         output = self.transformer_encoder(src, mask=mask, is_causal=True)
-        output = self.linear(output)
-        return output
+        return self.linear(output)  # [B, S, vocab]
+
 
 class LLMLightning(L.LightningModule):
     def __init__(self, vocab_size=65, lr=1e-3):
         super().__init__()
         self.save_hyperparameters()
-        self.model = SimpleLLM(vocab_size=vocab_size)
+        self.model = TineLLM(vocab_size=vocab_size, max_seq_len=64)
         self.loss_fn = nn.CrossEntropyLoss()
         self.vocab_size = vocab_size
 

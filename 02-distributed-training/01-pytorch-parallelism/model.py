@@ -70,6 +70,3 @@ class TineLLM(nn.Module):
         output = self.linear(output)  # [B, S, vocab]
         return output
 
-
-# Backwards-compat alias inside this lesson directory.
-SimpleLLM = TineLLM

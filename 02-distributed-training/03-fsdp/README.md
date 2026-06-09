@@ -191,6 +191,10 @@ When you run both scenarios, compare:
 
 ## Running
 
+The `submit_oom.sh` and `submit_fsdp.sh` scripts run inside Apptainer (`/opt/shared/rocm-pytorch.sif`).
+
+Optional: bypass Apptainer and run with your local venv by setting `USE_VENV=1`.
+
 ### Scenario 1: OOM Demo (DDP, 1 GPU)
 
 ```bash

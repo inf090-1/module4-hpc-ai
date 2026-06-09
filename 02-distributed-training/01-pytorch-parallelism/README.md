@@ -337,10 +337,13 @@ Optional: you can bypass Apptainer and run with your local venv by setting `USE_
 ### Locally (2+ GPUs, no SLURM)
 
 ```bash
+python train_single.py
 python train_ddp.py
 python train_pp.py
 python train_tp.py
 ```
+
+To compare fairly, run `train_single.py` and the parallel scripts with the same `--seq_len`, `--batch_size`, and `--max_batches`.
 
 > **Cluster note**: Pre-copy `shakespeare.txt` into this directory on the cluster. Compute nodes may lack internet access for auto-download.
 
