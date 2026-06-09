@@ -12,8 +12,6 @@ All examples train a **GPT-like autoregressive Language Model** (decoder-only Tr
 - **Model (Lesson 1: `TineLLM`)**: A small GPT-like decoder-only Transformer. It uses causal masking so each position can only use earlier characters. The defaults are tuned to keep the model small enough for the course to run on a couple of GPUs.
 - **MassiveModel** (Lesson 3 only): A scaled-up version (`d_model=4096`, 12 layers, `dim_feedforward=16384`) designed to exceed single-GPU VRAM, demonstrating why FSDP is needed.
 
-> **Cluster note**: Pre-copy `shakespeare.txt` into each lesson directory on the cluster. Compute nodes may lack internet access for auto-download.
-
 ---
 
 ## Course Structure
@@ -85,14 +83,6 @@ All scripts target the GPU partition with 2× AMD MI300X on node `g1`. Use `sbat
 1. **MASTER_ADDR/PORT**: All `submit_*.sh` scripts set these. Python scripts use `os.environ.setdefault()` so SLURM exports take precedence.
 2. **srun for multi-GPU**: Use `srun --mpi=none bash -lc '...'` instead of bare `python` for distributed jobs. This lets SLURM manage process launching.
 3. **Time limit**: Use at least `--time=00:10:00`. Shorter limits may not give enough time for model init + dataset loading on MI300X.
-4. **Dataset**: Pre-copy `shakespeare.txt` into each lesson directory on the cluster.
-5. **NCCL warnings**: Set `NCCL_DEBUG=WARN` to suppress verbose NCCL logs.
-
-### Syncing Code to the Cluster
-
-```bash
-rsync -avz 02-distributed-training/ g1:~/workspace/courses/INFO090/module4-hpc-ai/02-distributed-training/
-```
 
 ## Known Issues
 
