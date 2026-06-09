@@ -17,5 +17,12 @@ traces/
 *.png
 *.csv
 
+# GeoArches / ERA5 downloads (can be huge)
+*.nc
+*.ckpt
+geoarches_real_run/
+modelstore/
+data/era5_240/
+
 # Apptainer/Singularity images
 *.sif
