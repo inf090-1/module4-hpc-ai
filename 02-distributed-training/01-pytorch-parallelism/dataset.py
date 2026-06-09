@@ -11,15 +11,17 @@ class ShakespeareDataset(Dataset):
         
         is_dist = dist.is_available() and dist.is_initialized()
         rank = dist.get_rank() if is_dist else 0
-        
-        if rank == 0:
-            if not os.path.exists(file_path):
-                print(f"Downloading {file_path}...")
-                urllib.request.urlretrieve(url, file_path)
-        
-        if is_dist:
+
+        file_already_exists = os.path.exists(file_path)
+
+        # Only download (and barrier) if the file is missing.
+        if rank == 0 and not file_already_exists:
+            print(f"Downloading {file_path}...")
+            urllib.request.urlretrieve(url, file_path)
+
+        if is_dist and not file_already_exists:
             dist.barrier()
-            
+
         with open(file_path, 'r', encoding='utf-8') as f:
             text = f.read()
         

@@ -11,30 +11,45 @@ All three training scripts share two files: `model.py` and `dataset.py`.
 ### The Model — `model.py`
 
 ```python
-class SimpleLLM(nn.Module):
-    def __init__(self, vocab_size=65, d_model=512, nhead=8, num_layers=4):
-        super().__init__()
-        self.embedding = nn.Embedding(vocab_size, d_model)
-        self.pos_encoder = PositionalEncoding(d_model)
-        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.linear = nn.Linear(d_model, vocab_size)
+ class TineLLM(nn.Module):
+     def __init__(
+         self,
+         vocab_size=65,
+         d_model=128,
+         nhead=4,
+         num_layers=2,
+         dim_feedforward=256,
+     ):
+         super().__init__()
+         self.embedding = nn.Embedding(vocab_size, d_model)
+         self.pos_encoder = PositionalEncoding(d_model)
+         encoder_layer = nn.TransformerEncoderLayer(
+             d_model=d_model,
+             nhead=nhead,
+             dim_feedforward=dim_feedforward,
+             batch_first=True,
+         )
+         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+         # Slightly reduces parameter count vs a biased projection.
+         self.linear = nn.Linear(d_model, vocab_size, bias=False)
 ```
 
 This is a **decoder-only Transformer** (GPT-like). Key design choices:
 
+This lesson uses **`TineLLM`** defaults tuned to keep the parameter/weight footprint small so the model is practical to run on a couple of GPUs.
+
 | Component | What it does | Why this choice |
 |-----------|-------------|-----------------|
-| `nn.Embedding(vocab_size, d_model)` | Maps each character to a 512-dim vector | Character-level tokenization (vocab_size ≈ 65) |
+| `nn.Embedding(vocab_size, d_model)` | Maps each character to a 128-dim vector | Character-level tokenization (vocab_size ≈ 65) |
 | `PositionalEncoding` | Adds sinusoidal position signals | Transformers have no inherent order awareness |
 | `nn.TransformerEncoder` with `is_causal=True` | Stack of self-attention layers with causal mask | The causal mask ensures position *i* can only attend to positions ≤ *i* — this is what makes it GPT-like (autoregressive) |
-| `nn.Linear(d_model, vocab_size)` | Projects hidden states back to character probabilities | Standard language model head |
+| `nn.Linear(d_model, vocab_size, bias=False)` | Projects hidden states back to character probabilities | Standard language model head |
 
-The causal mask is generated on every forward pass:
+The causal mask is cached once (based on `max_seq_len`) and then sliced for each batch:
 
 ```python
-mask = nn.Transformer.generate_square_subsequent_mask(seq_len).to(src.device)
-output = self.transformer_encoder(src, mask=mask, is_causal=True)
+ mask = self.causal_mask[:seq_len, :seq_len]
+ output = self.transformer_encoder(src, mask=mask, is_causal=True)
 ```
 
 This upper-triangular matrix of `-inf` values prevents "looking into the future" during training — exactly how GPT works.
@@ -109,7 +124,7 @@ for epoch in range(2):
 ### Step 3: Wrap the Model with DDP
 
 ```python
-model = SimpleLLM(vocab_size=vocab_size).to(rank)
+ model = TineLLM(vocab_size=vocab_size, max_seq_len=seq_len).to(rank)
 ddp_model = DDP(model, device_ids=[rank])
 ```
 
@@ -160,11 +175,18 @@ During backward, DDP buckets gradients and overlaps communication with computati
 ### Step 1: Define a Split Model
 
 ```python
-class PipelineParallelLLM(nn.Module):
-    def __init__(self, vocab_size=65, d_model=512, nhead=8, num_layers=4):
-        super().__init__()
-        self.dev0 = "cuda:0"
-        self.dev1 = "cuda:1"
+ class PipelineParallelTineLLM(nn.Module):
+     def __init__(
+         self,
+         vocab_size=65,
+         d_model=128,
+         nhead=4,
+         num_layers=2,
+         dim_feedforward=256,
+     ):
+         super().__init__()
+         self.dev0 = "cuda:0"
+         self.dev1 = "cuda:1"
 
         # Part 1 on GPU 0
         self.embedding = nn.Embedding(vocab_size, d_model).to(self.dev0)
@@ -173,10 +195,10 @@ class PipelineParallelLLM(nn.Module):
 
         # Part 2 on GPU 1
         self.transformer_part2 = nn.TransformerEncoder(..., num_layers=num_layers//2).to(self.dev1)
-        self.linear = nn.Linear(d_model, vocab_size).to(self.dev1)
+         self.linear = nn.Linear(d_model, vocab_size, bias=False).to(self.dev1)
 ```
 
-Instead of putting the whole model on one device, we **manually place** different layers on different GPUs. The first 2 transformer layers go on GPU 0, the last 2 + output head go on GPU 1. This requires no `dist.init_process_group` — it's a single process managing two GPUs.
+Instead of putting the whole model on one device, we **manually place** different layers on different GPUs. The first `num_layers//2` transformer layers go on GPU 0, and the remaining layers + output head go on GPU 1. This requires no `dist.init_process_group` — it's a single process managing two GPUs.
 
 ### Step 2: Forward Pass with Explicit Device Transfers
 
@@ -330,45 +352,28 @@ TP communicates on **every forward and backward pass** — not just during gradi
 
 ## Running the Examples
 
-### Via SLURM (cluster)
+### Via SLURM (cluster: node `g1`)
 
-**DDP and TP** (multi-process, 2 tasks):
-
-```bash
-#!/bin/bash
-#SBATCH --partition=gpu
-#SBATCH --ntasks-per-node=2
-#SBATCH --cpus-per-task=4
-#SBATCH --gpus-per-node=2
-#SBATCH --time=00:10:00
-#SBATCH --output=ddp-%j.out
-
-export MASTER_ADDR=127.0.0.1
-export MASTER_PORT=29500
-source ~/venv-pytorch/bin/activate
-
-srun --mpi=none bash -lc "source ~/venv-pytorch/bin/activate; python -u train_ddp.py"
-```
-
-**PP** (single process managing 2 GPUs):
+This lesson includes ready-to-run submit scripts (already configured for `--partition=gpu` and `--nodelist=g1`):
 
 ```bash
-#!/bin/bash
-#SBATCH --partition=gpu
-#SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=2
-#SBATCH --time=00:10:00
-#SBATCH --output=pp-%j.out
-
-source ~/venv-pytorch/bin/activate
-srun --mpi=none bash -lc "source ~/venv-pytorch/bin/activate; python -u train_pp.py"
+cd 01-pytorch-parallelism
+sbatch submit_ddp.sh
+sbatch submit_pp.sh
+sbatch submit_tp.sh
 ```
 
-For quick testing, add `--max_batches 50`:
+Each job prints an **epoch summary** like:
 
-```bash
-python -u train_ddp.py --max_batches 50
+```text
+Epoch 1/1 | loss: 4.23xx | acc: 0.0x% | time: 12.3s
 ```
+
+> Logs are written to files like `ddp-<jobid>.out`, `pp-<jobid>.out`, `tp-<jobid>.out`.
+
+#### Container + rendezvous behavior
+
+The submit scripts run the training inside Apptainer (`/home/shared/rocm-pytorch.sif`). They also load **OpenMPI** (for `srun --mpi=pmix`) and use `env://` rendezvous for DDP/TP (they set `MASTER_ADDR`, `MASTER_PORT`, and `TORCH_DISTRIBUTED_INIT_METHOD=env://`).
 
 ### Locally (2+ GPUs, no SLURM)
 
