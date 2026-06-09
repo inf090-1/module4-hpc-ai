@@ -23,14 +23,12 @@ You will run:
 
 ## Course Structure (Lessons)
 
-| # | Lesson | Description |
-|---|--------|-------------|
-| 1 | [01-batch](01-batch/README.md) | WeatherNet inference + forecast GIF (`weather_forecast.gif`) with optional FP32/AMP benchmarking |
-| 2 | [03-ensemble](03-ensemble/README.md) | Ensemble weather inference (mean + uncertainty) + GIF (`weather_forecast_ensemble.gif`) |
-| 3 | [02-profiling](02-profiling/README.md) | PyTorch Profiler for inference workloads (Chrome trace export) |
-| 4 | [01-apptainer-basics](../04-mlops-containers/01-apptainer-basics/README.md) | Apptainer containers for AI |
-| 5 | [02-portability](../04-mlops-containers/02-portability/README.md) | AMD/NVIDIA portability |
-| 6 | [03-experiment-management](../04-mlops-containers/03-experiment-management/README.md) | Distributed checkpoints |
+| # | Lesson | What you’ll do |
+|---|--------|----------------|
+| 1 | [01-batch](01-batch/README.md) | WeatherNet autoregressive inference + forecast GIF (`weather_forecast.gif`) |
+| 2 | [03-ensemble](03-ensemble/README.md) | Ensemble inference (mean + uncertainty) + GIF (`weather_forecast_ensemble.gif`) |
+| 3 | [02-profiling](02-profiling/README.md) | Profile inference with PyTorch Profiler and export a Chrome trace |
+| 4 | [04-geoarches](04-geoarches/README.md) *(optional)* | Real ERA5 inference using GeoArches/ArchesWeatherGen in Apptainer → `Z500_example.gif` |
 
 ---
 
