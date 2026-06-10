@@ -1,0 +1,20 @@
+Bootstrap: docker
+From: rocm/pytorch:latest
+
+%post
+    echo "=== Installing additional packages ==="
+    pip install --no-cache-dir lightning torchvision
+
+%labels
+    Author INFO090
+    Description PyTorch with ROCm for HPC-AI course
+
+%help
+    PyTorch container for INFO090 HPC-AI course.
+    Supports AMD MI300X GPUs via ROCm.
+
+    Usage:
+        apptainer exec --rocm pytorch-rocm.sif python train.py
+
+%runscript
+    exec python "$@"

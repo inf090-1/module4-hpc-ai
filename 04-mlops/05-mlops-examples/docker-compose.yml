@@ -1,0 +1,63 @@
+# docker-compose.yml — Multi-Service Orchestration
+# ==================================================
+# Role in the System Architecture:
+#   This file defines and wires together the TWO runtime services that
+#   make up the MLOps system, allowing them to be started with a single
+#   command: `docker compose up`.
+#
+#   Services declared here:
+#
+#   1. mlflow-server
+#      - Runs the official MLflow tracking server image.
+#      - Stores experiment metadata in an SQLite DB and model artifacts in
+#        the shared /mlruns volume.
+#      - Exposed on host port 5001 (container port 5000).
+#      - Both train.py (offline) and api.py (online) connect to this server.
+#
+#   2. app-service
+#      - Built from cred_analysis_app/Dockerfile.
+#      - Runs the FastAPI inference server (src/api.py via uvicorn).
+#      - Exposed on host port 8001 (container port 8000).
+#      - Mounts the same /mlruns volume so it can read model artifacts
+#        directly from the filesystem (avoids network artifact downloads).
+#      - Mounts cred_analysis_app/data for persistent production_logs.csv
+#        and drift_report.html.
+#
+#   Data flow:
+#       train.py ──► mlflow-server ──► /mlruns (shared volume)
+#                                            ▼
+#                                      app-service (api.py reads model)
+#                                            │
+#                                    production_logs.csv
+#                                            ▼
+#                                      monitoring.py ──► drift_report.html
+
+services:
+  mlflow-server:
+    image: ghcr.io/mlflow/mlflow:v2.12.2
+    container_name: mlflow-server
+    ports:
+      - "5001:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:////mlruns/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlruns
+    volumes:
+      - ./mlruns:/mlruns
+    command: mlflow server --backend-store-uri sqlite:////mlruns/mlflow.db --default-artifact-root /mlruns --host 0.0.0.0
+
+  app-service:
+    build:
+      context: ./cred_analysis_app
+    container_name: app-service
+    ports:
+      - "8001:8000"
+    volumes:
+      # Mount mlruns to the SAME path to ensure the API can read artifacts locally
+      - ./mlruns:/mlruns
+      # Mount the data directory to persist production logs
+      - ./cred_analysis_app/data:/app/data
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    depends_on:
+      - mlflow-server
+    command: uvicorn src.api:app --host 0.0.0.0 --port 8000

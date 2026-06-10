@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv
+env/
+venv/
+lib/
+mlruns/
+mlflow.db
+.DS_Store
+.idea/
+.vscode/
+data/
+!cred_analysis_app/data/.keep
