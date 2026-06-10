@@ -259,7 +259,7 @@ python train.py --save-dir $CHECKPOINT_DIR
 cp $CHECKPOINT_DIR/best_model.pt /home/$USER/archived/
 ```
 
-> **Reference**: [Lustre Filesystem](https://lustre.readthedocs.io/) — parallel filesystem used on many HPC clusters.
+> **Reference**: [Lustre Filesystem](https://www.lustre.org/documentation/) — parallel filesystem used on many HPC clusters.
 
 ---
 
@@ -293,5 +293,5 @@ cp $CHECKPOINT_DIR/best_model.pt /home/$USER/archived/
 - [PyTorch Checkpoint Tutorial](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html#saving-and-loading-checkpoints)
 - [FSDP Checkpoint Example](https://pytorch.org/tutorials/intermediate/FSDP_tutorial.html#saving-and-loading-a-checkpoint)
 - [Distributed Checkpoint API](https://pytorch.org/docs/stable/distributed.checkpoint.html)
-- [Torch distributed.elastic](https://pytorch.org/docs/stable/elastic.html) — fault-tolerant training
+- [PyTorch Distributed Overview](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html) — DDP tutorial with checkpointing examples
 - [SLURM Documentation](https://slurm.schedmd.com/documentation.html) — HPC job scheduling

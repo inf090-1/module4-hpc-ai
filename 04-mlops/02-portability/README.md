@@ -286,7 +286,7 @@ apptainer exec $GPU_FLAG \
 
 ## Further Reading
 
-- [ROCm Getting Started](https://rocm.docs.amd.com/en/latest/tutorial/getting-started/)
+- [ROCm Getting Started](https://rocm.docs.amd.com/)
 - [PyTorch ROCm Installation](https://pytorch.org/docs/stable/notes/rocm.html)
 - [PyTorch CUDA Semantics](https://pytorch.org/docs/stable/notes/cuda.html)
 - [AMD HIP Programming Guide](https://rocm.docs.amd.com/projects/HIP/en/latest/)

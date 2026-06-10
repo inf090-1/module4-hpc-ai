@@ -52,7 +52,7 @@ A **container** bundles your entire runtime (OS libraries, Python, packages, eve
 
 > **Key difference**: Docker requires a root daemon running in the background. Apptainer is a single binary that runs containers as your user — no daemon, no root. This makes it safe for shared HPC clusters where multiple users share the same nodes.
 
-> **Reference**: [Apptainer User Guide](https://docs.apptainer.org/en/latest/user_guide.html) — official documentation covering all commands and options.
+> **Reference**: [Apptainer User Guide](https://docs.sylabs.io/guides/latest/user-guide/introduction.html) — official documentation covering all commands and options.
 
 ---
 
@@ -87,7 +87,7 @@ By the end of this lesson you will be able to:
 | SLURM integration | Poor (daemon-based) | Excellent (single-binary execution) |
 | Registry | Docker Hub | Docker Hub + Singularity/Apptainer |
 
-> **Reference**: [Apptainer vs Docker](https://docs.apptainer.org/en/latest/admin_guide/admin_quickstart.html#docker-compatibility) — how Apptainer handles Docker images.
+> **Reference**: [Apptainer vs Docker](https://docs.sylabs.io/guides/latest/admin-guide/admin_quickstart.html#docker-compatibility) — how Apptainer handles Docker images.
 
 ---
 
@@ -193,7 +193,7 @@ apptainer build --sandbox sandbox/ image.sif
 # (not recommended — better to maintain both separately)
 ```
 
-> **Reference**: [Apptainer and Docker](https://docs.apptainer.org/en/latest/user_guide/building.html#building-container-images) — official guide on building from Docker sources.
+> **Reference**: [Apptainer and Docker](https://docs.sylabs.io/guides/latest/user-guide/build_a_container.html#building-container-images) — official guide on building from Docker sources.
 
 ---
 
@@ -257,7 +257,7 @@ From: rocm/pytorch:latest
 - `%post` — commands that run **during the build** (like a Dockerfile's `RUN`). Here we add `lightning` and `torchvision` on top of the base.
 - `%runscript` — the command that runs when you execute `apptainer exec ... .sif`. `"$@"` passes through any arguments you provide.
 
-> **Reference**: [Apptainer Definition Files](https://docs.apptainer.org/en/latest/user_guide/building.html) — all sections of a `.def` file (`%post`, `%runscript`, `%environment`, `%labels`, etc.)
+> **Reference**: [Apptainer Definition Files](https://docs.sylabs.io/guides/latest/user-guide/build_a_container.html) — all sections of a `.def` file (`%post`, `%runscript`, `%environment`, `%labels`, etc.)
 
 ### Step 3 — Set up a build cache (first time only)
 
@@ -301,7 +301,7 @@ apptainer exec --rocm \
 | `--pwd /workspace` | Sets the working directory to `/workspace` |
 | `exec` | Runs a command inside the container (not the `%runscript`) |
 
-> **Reference**: [Apptainer Exec](https://docs.apptainer.org/en/latest/user_guide/cli/apptainer_exec.html) — full list of flags.
+> **Reference**: [Apptainer Exec](https://docs.sylabs.io/guides/latest/user-guide/cli.html) — full list of flags.
 
 ---
 
@@ -365,7 +365,7 @@ This runs directly in your terminal (useful for debugging since you see stdout/s
 | `apptainer shell image.sif` | Open an interactive shell inside the container |
 | `apptainer inspect image.sif` | View metadata (labels, sections) |
 
-> **Reference**: [Apptainer CLI Reference](https://docs.apptainer.org/en/latest/cli/apptainer.html) — complete command reference.
+> **Reference**: [Apptainer CLI Reference](https://docs.sylabs.io/guides/latest/user-guide/cli.html) — complete command reference.
 
 ---
 
@@ -380,7 +380,7 @@ This runs directly in your terminal (useful for debugging since you see stdout/s
 
 ## Further Reading
 
-- [Apptainer Quick Start](https://docs.apptainer.org/en/latest/user_guide/quick_start.html)
-- [Apptainer on HPC Clusters](https://docs.apptainer.org/en/latest/admin_guide/admin_quickstart.html)
+- [Apptainer Quick Start](https://docs.sylabs.io/guides/latest/user-guide/quick_start.html)
+- [Apptainer on HPC Clusters](https://docs.sylabs.io/guides/latest/admin-guide/admin_quickstart.html)
 - [Singularity Container Examples](https://github.com/singularityhub/singularity-hpc)
-- [Docker to Apptainer Conversion Guide](https://docs.apptainer.org/en/latest/user_guide/building.html#building-container-images)
+- [Docker to Apptainer Conversion Guide](https://docs.sylabs.io/guides/latest/user-guide/build_a_container.html#building-container-images)

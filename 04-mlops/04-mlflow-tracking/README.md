@@ -30,7 +30,7 @@ By the end of this lesson you will be able to:
 | **SLURM** | HPC job scheduler | Cluster |
 
 > **Reference**: [MLflow Documentation](https://mlflow.org/docs/latest/index.html) — official docs covering all features.
-> **Reference**: [MLflow Quickstart](https://mlflow.org/docs/latest/quickstart.html) — minimal working example.
+> **Reference**: [MLflow Quickstart](https://mlflow.org/docs/latest/getting-started/index.html) — minimal working example.
 
 ---
 
@@ -436,9 +436,9 @@ In the MLflow UI, navigate to **Models → TinyLLM** to see:
 ## Further Reading
 
 - [MLflow Documentation](https://mlflow.org/docs/latest/index.html) — complete reference
-- [MLflow Quickstart](https://mlflow.org/docs/latest/quickstart.html) — get started in 5 minutes
+- [MLflow Quickstart](https://mlflow.org/docs/latest/getting-started/index.html) — get started in 5 minutes
 - [MLflow Tracking](https://mlflow.org/docs/latest/tracking.html) — parameters, metrics, artifacts
 - [MLflow Model Registry](https://mlflow.org/docs/latest/model-registry.html) — versioning and stages
 - [MLflow + PyTorch](https://mlflow.org/docs/latest/models.html#pytorch) — PyTorch integration details
 - [MLflow Deployment](https://mlflow.org/docs/latest/models.html#deploying-pytorch-models) — serving models
-- [Comparing MLflow, Weights & Biases, and Neptune](https://neptune.ai/blog/mlflow-vs-wandb-vs-neptune) — tool comparison
+- [MLflow vs Weights & Biases](https://mlflow.org/docs/latest/getting-started/index.html) — MLflow getting started guide

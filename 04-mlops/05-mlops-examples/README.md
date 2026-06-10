@@ -345,8 +345,8 @@ uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
 
 ## Further Reading
 
-- [MLflow Quickstart](https://mlflow.org/docs/latest/quickstart.html)
+- [MLflow Quickstart](https://mlflow.org/docs/latest/getting-started/index.html)
 - [FastAPI Tutorial](https://fastapi.tiangolo.com/tutorial/)
-- [Evidently AI Data Drift](https://docs.evidentlyai.com/library/data-drift)
+- [Evidently AI Documentation](https://docs.evidentlyai.com/) — ML monitoring and data drift
 - [Docker Compose Overview](https://docs.docker.com/compose/)
 - [MLOps Best Practices](https://cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
