@@ -7,13 +7,12 @@
 #SBATCH --time=24:00:00
 #SBATCH --output=z500-vs-gt-%j.out
 
-module load apptainer 2>/dev/null || true
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+WORKDIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+cd "$WORKDIR"
 
 # Defaults (can be overridden via: sbatch --export=ALL,VAR=...)
-export SIF_NAME="${SIF_NAME:-pytorch_training_geoarches.sif}"
+# export SIF_NAME="${SIF_NAME:-pytorch_training_geoarches.sif}"
+export SIF_NAME=/opt/shared/pytorch_training_geoarches.sif
 export RUN_DIR="${RUN_DIR:-$PWD/geoarches_real_run}"
 export MODEL_NAME="${MODEL_NAME:-archesweathergen}"
 

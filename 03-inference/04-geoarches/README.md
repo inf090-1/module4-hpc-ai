@@ -96,16 +96,18 @@ The wrapper script handles downloads and execution. Key environment variables:
 | `N_MEMBERS` | `25` | Ensemble size |
 | `DOWNLOAD_DATA` | `0` | Download ERA5 subset (1 = yes) |
 | `DOWNLOAD_MODELS` | `0` | Download model checkpoints (1 = yes) |
-| `DOWNLOAD_ASSETS` | `0` | Download normalization stats (1 = yes) |
+| `DOWNLOAD_ASSETS` | `0` | Download normalization stats (1 = yes). Required stats are also auto-fetched if missing. |
 | `MAX_DATA_GB` | `5` | Max ERA5 data to download |
 | `RUN_YEARS_STR` | `2020` | Years to download (space-separated) |
 | `RUN_HOURS_STR` | `0` | Hours to download (space-separated) |
 
-**Minimal test (no downloads, validates wiring):**
+**Minimal test (fast wiring check):**
 ```bash
 RUN_INFER=0 DOWNLOAD_DATA=0 DOWNLOAD_MODELS=0 DOWNLOAD_ASSETS=0 \
   ./run_z500_gif.sh
 ```
+
+Note: the wrapper may still download the **required** GeoArches normalization/statistics files if they are missing in your `RUN_DIR` (it caches them afterward).
 
 **Full run (downloads everything, generates GIF):**
 ```bash

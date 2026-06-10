@@ -89,13 +89,13 @@ fi
 HF_BASE_URL="https://huggingface.co/gcouairon/ArchesWeather/resolve/main"
 GH_RAW_BASE="https://raw.githubusercontent.com/INRIA/geoarches/90cc5fe/geoarches/stats"
 
-# Paths *inside the container* (no host bind-mounts required).
-# Files won't persist outside the container unless this wrapper copies them out.
-# Use a /tmp-backed path inside the container for large writes.
-# Writing under /workspace can crash with some overlay configurations.
-DATA_PATH_IN_CONT="/tmp/geoarches_data/era5_240/full/"
-MODEL_PATH_IN_CONT="modelstore/${MODEL_NAME}"
-OUTPUT_DIR_IN_CONT="/tmp/geoarches_data/gifs/"
+# Bind host RUN_DIR into the container so downloads persist across runs.
+# Avoid writing into /workspace (not writable in some container setups).
+WORKDIR_IN_CONT="/work"
+DATA_PATH_IN_CONT="${WORKDIR_IN_CONT}/data/era5_240/full/"
+MODELSTORE_BASE_IN_CONT="${WORKDIR_IN_CONT}/modelstore"
+MODEL_PATH_IN_CONT="${MODELSTORE_BASE_IN_CONT}/${MODEL_NAME}"
+OUTPUT_DIR_IN_CONT="${WORKDIR_IN_CONT}/gifs/"
 
 echo "=== Apptainer real-data inference (GeoArches) ==="
 echo "SIF: $SIF_NAME"
@@ -131,8 +131,19 @@ cat > /tmp/inner_cmd.sh <<'INNER_EOF'
     set -euo pipefail
     cd /workspace/geoarches
 
-    if [ '${DOWNLOAD_ASSETS}' = '1' ]; then
-      echo '== Downloading normalization stats assets =='
+    # The model requires a set of normalization/statistics assets.
+    # Download them if they're missing (more robust than relying solely on DOWNLOAD_ASSETS).
+    if [ ! -f "geoarches/stats/era5-quantiles-2016_2022.nc" ] || \
+       [ ! -f "geoarches/stats/archesweather_constant_masks.pt" ] || \
+       [ ! -f "geoarches/stats/pangu_norm_stats2_with_w.pt" ] || \
+       [ ! -f "geoarches/stats/pangu_norm_stats2.pt" ] || \
+       [ ! -f "geoarches/stats/climatology_metrics.pt" ] || \
+       [ ! -f "geoarches/stats/dcpp_spatial_norm_stats.pt" ] || \
+       [ ! -f "geoarches/stats/delta24_stats.pt" ] || \
+       [ ! -f "geoarches/stats/delta24_stats_with_w.pt" ] || \
+       [ ! -f "geoarches/stats/deltapred24_aws_denorm.pt" ] || \
+       [ ! -f "geoarches/stats/hres-quantiles-2016_2022.nc" ]; then
+      echo '== Downloading normalization stats assets (missing required files) =='
       mkdir -p geoarches/stats
 
       # Core stats files required by the model
@@ -148,9 +159,87 @@ cat > /tmp/inner_cmd.sh <<'INNER_EOF'
         deltapred24_aws_denorm.pt \
         hres-quantiles-2016_2022.nc; do
         echo "  Downloading ${f}..."
-        wget -q --show-progress -O "geoarches/stats/${f}" \
-          "${GH_RAW_BASE}/${f}"
+        out_file="geoarches/stats/${f}"
+        if [ -f "${out_file}" ]; then
+          echo "  Using cached: ${f}"
+        else
+          # Quantile NetCDF files are published from HuggingFace in the upstream guide.
+          if [[ "${f}" == era5-quantiles-* || "${f}" == hres-quantiles-* ]]; then
+            wget --show-progress -O "${out_file}" "${HF_BASE_URL}/${f}"
+          else
+            wget --show-progress -O "${out_file}" "${GH_RAW_BASE}/${f}"
+          fi
+          if [ ! -s "${out_file}" ]; then
+            echo "ERROR: download produced empty file: ${out_file}" >&2
+            exit 3
+          fi
+        fi
       done
+
+      # Hard verification: fail fast with a clear message.
+      missing=0
+      for f in \
+        era5-quantiles-2016_2022.nc \
+        pangu_norm_stats2_with_w.pt \
+        pangu_norm_stats2.pt \
+        archesweather_constant_masks.pt \
+        climatology_metrics.pt \
+        dcpp_spatial_norm_stats.pt \
+        delta24_stats.pt \
+        delta24_stats_with_w.pt \
+        deltapred24_aws_denorm.pt \
+        hres-quantiles-2016_2022.nc; do
+        if [ ! -f "geoarches/stats/${f}" ]; then
+          echo "ERROR: missing required asset: geoarches/stats/${f}" >&2
+          missing=1
+        fi
+      done
+      if [ "$missing" = "1" ]; then
+        exit 2
+      fi
+    fi
+
+    # Always validate quantile NetCDF files if they exist.
+    # This catches the case where a previous download created corrupted/HTML files
+    # with the right name but not the right format.
+    if [ -f "geoarches/stats/era5-quantiles-2016_2022.nc" ] && [ -f "geoarches/stats/hres-quantiles-2016_2022.nc" ]; then
+      validation_rc=0
+      python - <<'PY' || validation_rc=$?
+import os
+import xarray as xr
+
+check_files = [
+    'geoarches/stats/era5-quantiles-2016_2022.nc',
+    'geoarches/stats/hres-quantiles-2016_2022.nc',
+]
+
+bad = []
+for p in check_files:
+    ok = False
+    for engine in ('netcdf4', 'scipy'):
+        try:
+            ds = xr.open_dataset(p, engine=engine)
+            _ = list(ds.variables.keys())
+            ok = True
+            break
+        except Exception:
+            pass
+    if not ok:
+        bad.append(p)
+
+if bad:
+    print('BAD_XARRAY_NETCDF_ASSETS:' , bad)
+    raise SystemExit(42)
+print('NetCDF stats assets validation: OK')
+PY
+
+      if [ "${validation_rc}" -ne 0 ]; then
+        echo 'NetCDF validation failed; re-downloading quantile assets...' >&2
+        for f in era5-quantiles-2016_2022.nc hres-quantiles-2016_2022.nc; do
+          rm -f "geoarches/stats/${f}"
+          wget --show-progress -O "geoarches/stats/${f}" "${HF_BASE_URL}/${f}"
+        done
+      fi
     fi
 
     if [ '${DOWNLOAD_DATA}' = '1' ]; then
@@ -177,33 +266,141 @@ for year in years:
             ds2 = ds2.isel(time=slice(0, max_steps))
 
         fname = out_folder / f'era5_240_{year}_{hour}h.nc'
-        print(f'[dl_era_limited] writing {fname} (time={int(ds2.time.size)})')
-        ds2.to_netcdf(fname)
+        if fname.exists():
+            print(f'[dl_era_limited] using cached {fname.name}')
+        else:
+            print(f'[dl_era_limited] writing {fname} (time={int(ds2.time.size)})')
+            ds2.to_netcdf(fname)
 PY
     fi
 
     if [ '${DOWNLOAD_MODELS}' = '1' ]; then
       echo '== Downloading pretrained model =='
-      mkdir -p '${MODEL_PATH_IN_CONT}/checkpoints'
-      wget -q --show-progress -O '${MODEL_PATH_IN_CONT}/checkpoints/checkpoint.ckpt' \
-        '${HF_BASE_URL}/${MODEL_NAME}_checkpoint.ckpt'
-      wget -q --show-progress -O '${MODEL_PATH_IN_CONT}/config.yaml' \
-        '${HF_BASE_URL}/${MODEL_NAME}_config.yaml'
+       mkdir -p '${MODEL_PATH_IN_CONT}/checkpoints'
+       if [ ! -f '${MODEL_PATH_IN_CONT}/checkpoints/checkpoint.ckpt' ]; then
+         wget -q --show-progress -O '${MODEL_PATH_IN_CONT}/checkpoints/checkpoint.ckpt' \
+           '${HF_BASE_URL}/${MODEL_NAME}_checkpoint.ckpt'
+       else
+         echo 'Using cached main model checkpoint'
+       fi
+       if [ ! -f '${MODEL_PATH_IN_CONT}/config.yaml' ]; then
+         wget -q --show-progress -O '${MODEL_PATH_IN_CONT}/config.yaml' \
+           '${HF_BASE_URL}/${MODEL_NAME}_config.yaml'
+       else
+         echo 'Using cached main model config'
+       fi
 
       # ArchesWeatherGen depends on 4 deterministic weather-model checkpoints
       # referenced from its config.yaml.
-      if [[ '${MODEL_NAME}' == archesweathergen* ]]; then
-        for MOD in archesweather-m-seed0 archesweather-m-seed1 \
-                   archesweather-m-skip-seed0 archesweather-m-skip-seed1; do
-          echo "== Downloading deterministic model: ${MOD} =="
-          mkdir -p "modelstore/${MOD}/checkpoints"
-          wget -q --show-progress -O "modelstore/${MOD}/checkpoints/checkpoint.ckpt" \
-            "${HF_BASE_URL}/${MOD}_checkpoint.ckpt"
-          wget -q --show-progress -O "modelstore/${MOD}/config.yaml" \
-            "${HF_BASE_URL}/${MOD}_config.yaml"
+       if [[ '${MODEL_NAME}' == archesweathergen* ]]; then
+         for MOD in archesweather-m-seed0 archesweather-m-seed1 \
+                     archesweather-m-skip-seed0 archesweather-m-skip-seed1; do
+            echo "== Downloading deterministic model: ${MOD} =="
+            mkdir -p "${MODELSTORE_BASE_IN_CONT}/${MOD}/checkpoints"
+            if [ ! -f "${MODELSTORE_BASE_IN_CONT}/${MOD}/checkpoints/checkpoint.ckpt" ]; then
+              wget -q --show-progress -O "${MODELSTORE_BASE_IN_CONT}/${MOD}/checkpoints/checkpoint.ckpt" \
+                "${HF_BASE_URL}/${MOD}_checkpoint.ckpt"
+            else
+              echo "Using cached deterministic checkpoint for ${MOD}"
+            fi
+            if [ ! -f "${MODELSTORE_BASE_IN_CONT}/${MOD}/config.yaml" ]; then
+              wget -q --show-progress -O "${MODELSTORE_BASE_IN_CONT}/${MOD}/config.yaml" \
+                "${HF_BASE_URL}/${MOD}_config.yaml"
+            else
+              echo "Using cached deterministic config for ${MOD}"
+            fi
+          done
+        fi
+
+       # Validate a couple of key NetCDF assets with xarray.
+      # If a previous run cached a corrupted download (e.g., an HTML error page saved as .nc),
+      # xarray may refuse to open it with any backend.
+      validation_rc=0
+      python - <<'PY' || validation_rc=$?
+import os
+import sys
+import xarray as xr
+
+check_files = [
+    'geoarches/stats/era5-quantiles-2016_2022.nc',
+    'geoarches/stats/hres-quantiles-2016_2022.nc',
+]
+
+bad = []
+for p in check_files:
+    if not os.path.exists(p):
+        bad.append(p)
+        continue
+    ok = False
+    for engine in ('netcdf4', 'scipy'):
+        try:
+            ds = xr.open_dataset(p, engine=engine)
+            # Force actual reading of metadata/coords.
+            _ = list(ds.variables.keys())
+            ok = True
+            break
+        except Exception:
+            pass
+    if not ok:
+        bad.append(p)
+
+if bad:
+    print('BAD_XARRAY_NETCDF_ASSETS:', bad)
+    sys.exit(42)
+print('NetCDF stats assets validation: OK')
+PY
+
+      # If validation failed, retry downloads of those files (best effort).
+      # (We purposely re-download only the quantile NetCDF files.)
+      if [ "${validation_rc}" -ne 0 ]; then
+        echo 'NetCDF validation failed; re-downloading quantile assets...' >&2
+        for f in era5-quantiles-2016_2022.nc hres-quantiles-2016_2022.nc; do
+          rm -f "geoarches/stats/${f}"
+          wget --show-progress -O "geoarches/stats/${f}" "${HF_BASE_URL}/${f}"
         done
+
+        echo 'Re-validating NetCDF assets...' >&2
+        validation_rc=0
+        python - <<'PY' || validation_rc=$?
+import os
+import xarray as xr
+
+check_files = [
+    'geoarches/stats/era5-quantiles-2016_2022.nc',
+    'geoarches/stats/hres-quantiles-2016_2022.nc',
+]
+
+bad = []
+for p in check_files:
+    if not os.path.exists(p):
+        bad.append(p)
+        continue
+    ok = False
+    for engine in ('netcdf4', 'scipy'):
+        try:
+            ds = xr.open_dataset(p, engine=engine)
+            _ = list(ds.variables.keys())
+            ok = True
+            break
+        except Exception:
+            pass
+    if not ok:
+        bad.append(p)
+
+if bad:
+    print('BAD_XARRAY_NETCDF_ASSETS_AFTER_REDOWNLOAD:', bad)
+    raise SystemExit(43)
+print('NetCDF stats assets validation (after retry): OK')
+PY
+
+      if [ "${validation_rc}" -ne 0 ]; then
+        echo 'ERROR: NetCDF assets still invalid after retry.' >&2
+        exit 44
       fi
-    fi
+      fi
+
+     fi
+
 
     if [ '${RUN_INFER}' = '1' ]; then
       echo '== Running Z500 vs GT GIF =='
@@ -211,24 +408,25 @@ PY
       # Newer images embed run_inference.py; older images embed the legacy
       # z500_vs_gt_make_gif_limited.py.
       if [ -f run_inference.py ]; then
-        python run_inference.py \\
-          --model '${MODEL_PATH_IN_CONT}' \\
-          --data-path '${DATA_PATH_IN_CONT}' \\
-          --output-dir '${OUTPUT_DIR_IN_CONT}' \\
-          --rollout-iterations '${ROLLOUT_ITERATIONS}' \\
-          --n-members '${N_MEMBERS}' \\
-          --cmap viridis
+        echo "[inner] run_inference.py args: --model=${MODEL_PATH_IN_CONT} --data-path=${DATA_PATH_IN_CONT} --output-dir=${OUTPUT_DIR_IN_CONT} --rollout-iterations=${ROLLOUT_ITERATIONS} --n-members=${N_MEMBERS} --cmap viridis"
+         python run_inference.py \
+           --model "${MODEL_PATH_IN_CONT}" \
+           --data-path "${DATA_PATH_IN_CONT}" \
+           --output-dir "${OUTPUT_DIR_IN_CONT}" \
+           --rollout-iterations "${ROLLOUT_ITERATIONS}" \
+           --n-members "${N_MEMBERS}" \
+           --cmap viridis
       else
-        python z500_vs_gt_make_gif_limited.py \\
-          --model '${MODEL_PATH_IN_CONT}' \\
-          --data-path '${DATA_PATH_IN_CONT}' \\
-          --output-dir '${OUTPUT_DIR_IN_CONT}' \\
-          --rollout-iterations '${ROLLOUT_ITERATIONS}' \\
-          --n-members '${N_MEMBERS}' \\
-          --cmap viridis
+        echo "[inner] z500_vs_gt_make_gif_limited.py args: --model=${MODEL_PATH_IN_CONT} --data-path=${DATA_PATH_IN_CONT} --output-dir=${OUTPUT_DIR_IN_CONT} --rollout-iterations=${ROLLOUT_ITERATIONS} --n-members=${N_MEMBERS} --cmap viridis"
+         python z500_vs_gt_make_gif_limited.py \
+           --model "${MODEL_PATH_IN_CONT}" \
+           --data-path "${DATA_PATH_IN_CONT}" \
+           --output-dir "${OUTPUT_DIR_IN_CONT}" \
+           --rollout-iterations "${ROLLOUT_ITERATIONS}" \
+           --n-members "${N_MEMBERS}" \
+           --cmap viridis
       fi
-
-      tar -c '${OUTPUT_DIR_IN_CONT}Z500.gif' >&3
+      # GIF is written directly to OUTPUT_DIR_IN_CONT (which is bound to the host RUN_DIR).
     fi
 INNER_EOF
 
@@ -243,6 +441,7 @@ INNER_CMD=$(cat /tmp/inner_cmd.sh | \
   sed "s|\${MAX_TIME_STEPS}|${MAX_TIME_STEPS}|g" | \
   sed "s|\${DOWNLOAD_MODELS}|${DOWNLOAD_MODELS}|g" | \
   sed "s|\${MODEL_PATH_IN_CONT}|${MODEL_PATH_IN_CONT}|g" | \
+  sed "s|\${MODELSTORE_BASE_IN_CONT}|${MODELSTORE_BASE_IN_CONT}|g" | \
   sed "s|\${HF_BASE_URL}|${HF_BASE_URL}|g" | \
   sed "s|\${MODEL_NAME}|${MODEL_NAME}|g" | \
   sed "s|\${RUN_INFER}|${RUN_INFER}|g" | \
@@ -255,13 +454,17 @@ rm /tmp/inner_cmd.sh
 if [ "${RUN_INFER}" = "1" ]; then
   apptainer exec --writable-tmpfs \
     "${APPTAINER_ACCEL_ARGS[@]}" \
+    --bind "${RUN_DIR}:${WORKDIR_IN_CONT}" \
+    --bind "${RUN_DIR}/modelstore:/workspace/geoarches/modelstore" \
+    --bind "${RUN_DIR}/geoarches/stats:/workspace/geoarches/geoarches/stats" \
     "$SIF_NAME" \
-    bash -lc "exec 3>&1 1>&2
-${INNER_CMD}" | tar -x -C "${RUN_DIR}"
+    bash -lc "${INNER_CMD}"
 else
-  # No GIF archive to extract, so do NOT pipe into tar.
   apptainer exec --writable-tmpfs \
     "${APPTAINER_ACCEL_ARGS[@]}" \
+    --bind "${RUN_DIR}:${WORKDIR_IN_CONT}" \
+    --bind "${RUN_DIR}/modelstore:/workspace/geoarches/modelstore" \
+    --bind "${RUN_DIR}/geoarches/stats:/workspace/geoarches/geoarches/stats" \
     "$SIF_NAME" \
     bash -lc "${INNER_CMD}"
 fi
