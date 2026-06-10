@@ -7,7 +7,21 @@ This lesson profiles the **inference** workload (multi-step rollout) to help you
 
 We use:
 - **PyTorch Profiler** (export Chrome trace)
-- Optional: **`rocm-smi`** for real-time GPU utilization
+- Optional: **`rocm-smi`** for real-time GPU utilization (run on the host; container availability varies)
+
+## What is being profiled
+- The workload is a **WeatherNet autoregressive rollout**: repeatedly calling the tiny CNN model `steps` times.
+- The heavy compute is mainly from the convolution layers and the overall launch/synchronization pattern between steps.
+
+## Checkpoint file (`.pt`)
+- `profile.py` loads a `WeatherNet` checkpoint (by default from `../01-batch/weathernet_infer_demo.pt`).
+- This `.pt` file is a **PyTorch state_dict** that contains the learned weights for the synthetic one-step map.
+- If `--auto-train` is enabled and the checkpoint is missing, the script will train a small demo model first, then run the profiler.
+
+## AMP in profiling
+- The script supports `--use-amp` to enable autocast during inference.
+- By default it uses `--amp-dtype bf16` (you can override it in `profile.py`).
+- With AMP enabled, you may see reduced time in compute-heavy kernels, but you still want to look for other bottlenecks (copies, idle gaps, launch overhead).
 
 ---
 

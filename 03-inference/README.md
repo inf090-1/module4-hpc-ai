@@ -1,6 +1,6 @@
 # Day 3 - Weather Forecasting Inference & Profiling (MI300X)
 
-This day focuses on **ML inference** for weather forecasting on **AMD MI300X** GPUs, replacing the previous MNIST-focused demo.
+This day focuses on **ML inference** for weather forecasting on **AMD MI300X** GPUs.
 
 You will run:
 - **Autoregressive batch inference** with mixed precision (FP32 vs AMP/BF16)

@@ -14,6 +14,9 @@ cd "$WORKDIR"
 
 export LD_LIBRARY_PATH=/opt/rocm/lib/llvm/lib:/opt/rocm/lib:$LD_LIBRARY_PATH
 
+echo "=== Sanity check: tostring_rgb usage in ensemble_gif.py ==="
+grep -n "tostring_rgb" "ensemble_gif.py" || true
+
 echo "=== Ensemble Inference (WeatherNet) + GIF ==="
 echo "GPU: $SLURM_GPUS_ON_NODE"
 echo ""

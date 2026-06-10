@@ -179,9 +179,12 @@ def _make_frames(
         ax2.grid(True, alpha=0.25)
         ax2.legend(loc="best", fontsize=9)
 
+        # Matplotlib compatibility:
+        # - Some versions no longer expose `FigureCanvasAgg.tostring_rgb()`.
+        # - `buffer_rgba()` is more robust; convert RGBA -> RGB.
         fig.canvas.draw()
-        img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-        img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        rgba = np.asarray(fig.canvas.buffer_rgba())  # (H, W, 4), uint8
+        img = rgba[..., :3]
         frames.append(img)
         plt.close(fig)
 
