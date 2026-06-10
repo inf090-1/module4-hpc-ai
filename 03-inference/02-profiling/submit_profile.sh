@@ -7,12 +7,12 @@
 #SBATCH --time=00:20:00
 #SBATCH --output=profile-%j.out
 
-module load python/3.13.1-gcc-11.5.0-linux-rocky9-ivybridge-33kdykh 2>/dev/null || true
+set -euo pipefail
+
+WORKDIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+cd "$WORKDIR"
 
 export LD_LIBRARY_PATH=/opt/rocm/lib/llvm/lib:/opt/rocm/lib:$LD_LIBRARY_PATH
-
-source ~/venv-pytorch/bin/activate
-
 export MASTER_ADDR=$(scontrol show hostname $SLURM_NODELIST | head -1)
 export MASTER_PORT=29500
 
@@ -20,4 +20,7 @@ echo "=== PyTorch Profiling ==="
 echo "GPUs: $SLURM_GPUS_ON_NODE"
 echo ""
 
-srun --mpi=none bash -lc "export LD_LIBRARY_PATH=/opt/rocm/lib/llvm/lib:/opt/rocm/lib:\$LD_LIBRARY_PATH; source ~/venv-pytorch/bin/activate; python profile.py --use-amp"
+srun --mpi=none apptainer exec --rocm \
+  --bind "$WORKDIR:$WORKDIR" --pwd "$WORKDIR" \
+  /opt/shared/rocm-pytorch.sif \
+  python -u profile.py --use-amp
