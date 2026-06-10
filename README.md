@@ -19,3 +19,4 @@ This module covers training Artificial Intelligence models on HPC clusters. You 
 - [01-getting-started](01-getting-started/README.md): cluster inspection, GPU topology, and a single-GPU MNIST training baseline.
 - [02-distributed-training](02-distributed-training/README.md): multi-GPU parallelism strategies (DDP, Pipeline, Tensor), PyTorch Lightning DDP, FSDP for large models, and performance profiling with AMD/NVIDIA tools.
 - [03-inference](03-inference/README.md): weather inference examples (batch + ensemble GIFs), inference profiling with PyTorch Profiler, and an optional real ERA5 inference workflow using GeoArches/ArchesWeatherGen inside Apptainer.
+- [04-mlops](04-mlops/README.md): Apptainer containers for reproducible environments, AMD/NVIDIA GPU portability, distributed checkpoint management, MLflow experiment tracking and model registry, and an end-to-end MLOps pipeline example with FastAPI serving and Evidently AI drift monitoring.
