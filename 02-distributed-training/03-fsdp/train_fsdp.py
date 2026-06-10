@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 import lightning as L
+from lightning.pytorch.loggers import CSVLogger
 
 class ShakespeareDataset(Dataset):
     def __init__(self, seq_len=128, train=True):
@@ -28,11 +29,19 @@ class ShakespeareDataset(Dataset):
         return x, y
 
 class MassiveModel(nn.Module):
-    def __init__(self, d_model=4096, num_layers=12, vocab_size=65):
+    def __init__(
+        self,
+        d_model=4096,
+        num_layers=12,
+        vocab_size=65,
+        ff_mult: int = 4,
+    ):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=16, dim_feedforward=d_model * 4,
+            d_model=d_model,
+            nhead=16,
+            dim_feedforward=d_model * ff_mult,
             batch_first=True,
         )
         self.transformer = nn.TransformerEncoder(layer, num_layers=num_layers)
@@ -46,10 +55,22 @@ class MassiveModel(nn.Module):
         return self.head(x)
 
 class MassiveLitModel(L.LightningModule):
-    def __init__(self, d_model=4096, num_layers=12, vocab_size=65, lr=1e-4):
+    def __init__(
+        self,
+        d_model=4096,
+        num_layers=12,
+        vocab_size=65,
+        lr=1e-4,
+        ff_mult: int = 4,
+    ):
         super().__init__()
         self.save_hyperparameters()
-        self.model = MassiveModel(d_model=d_model, num_layers=num_layers, vocab_size=vocab_size)
+        self.model = MassiveModel(
+            d_model=d_model,
+            num_layers=num_layers,
+            vocab_size=vocab_size,
+            ff_mult=ff_mult,
+        )
         self.loss_fn = nn.CrossEntropyLoss()
         self.vocab_size = vocab_size
 
@@ -81,6 +102,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--d_model", type=int, default=4096)
     parser.add_argument("--num_layers", type=int, default=12)
+    parser.add_argument("--seq_len", type=int, default=128)
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--ff_mult", type=int, default=4)
     parser.add_argument("--devices", type=int, default=2)
     parser.add_argument("--strategy", type=str, default="ddp")
     parser.add_argument("--max_epochs", type=int, default=2)
@@ -93,11 +117,15 @@ def main():
     print(f"[fsdp] Strategy: {strategy}, Devices: {args.devices}")
     print(f"[fsdp] Model: d_model={args.d_model}, layers={args.num_layers}")
 
-    model = MassiveLitModel(d_model=args.d_model, num_layers=args.num_layers)
+    model = MassiveLitModel(
+        d_model=args.d_model,
+        num_layers=args.num_layers,
+        ff_mult=args.ff_mult,
+    )
     model.prepare_data()
 
-    dataset = ShakespeareDataset()
-    loader = DataLoader(dataset, batch_size=8, shuffle=True)
+    dataset = ShakespeareDataset(seq_len=args.seq_len)
+    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
 
     trainer = L.Trainer(
         accelerator="gpu",
@@ -105,7 +133,7 @@ def main():
         num_nodes=1,
         strategy=strategy,
         max_epochs=args.max_epochs,
-        logger=L.CSVLogger("logs", name="massive_model"),
+        logger=CSVLogger("logs", name="massive_model"),
     )
 
     trainer.fit(model, loader)

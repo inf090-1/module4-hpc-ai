@@ -28,17 +28,7 @@ echo "Tasks: $SLURM_NTASKS"
 echo "GPUs: $SLURM_GPUS_ON_NODE"
 echo ""
 
-# Optional non-container execution.
-# Usage: `USE_VENV=1 sbatch submit_lightning.sh`
-if [[ "${USE_VENV:-0}" == "1" ]]; then
-  if [ -f "$HOME/venv-pytorch/bin/activate" ]; then
-    # shellcheck source=/dev/null
-    source "$HOME/venv-pytorch/bin/activate"
-  fi
-  srun --mpi=none python -u train_lightning.py --devices 2 --strategy ddp
-else
-  srun --mpi=pmix apptainer exec --rocm \
-    --bind "$WORKDIR:$WORKDIR" --pwd "$WORKDIR" \
-    /opt/shared/rocm-pytorch.sif \
-    python -u train_lightning.py --devices 2 --strategy ddp
-fi
+srun --mpi=none apptainer exec --rocm \
+  --bind "$WORKDIR:$WORKDIR" --pwd "$WORKDIR" \
+  /opt/shared/rocm-pytorch.sif \
+  python -u train_lightning.py --devices 2 --strategy ddp

@@ -26,17 +26,7 @@ echo "GPUs: $SLURM_GPUS_ON_NODE"
 echo "Strategy: fsdp (sharded across 2 GPUs)"
 echo ""
 
-# Optional non-container execution.
-# Usage: `USE_VENV=1 sbatch submit_fsdp.sh`
-if [[ "${USE_VENV:-0}" == "1" ]]; then
-  if [ -f "$HOME/venv-pytorch/bin/activate" ]; then
-    # shellcheck source=/dev/null
-    source "$HOME/venv-pytorch/bin/activate"
-  fi
-  srun --mpi=none python -u train_fsdp.py --devices 2 --strategy fsdp --d_model 4096 --num_layers 12
-else
-  srun --mpi=pmix apptainer exec --rocm \
-    --bind "$WORKDIR:$WORKDIR" --pwd "$WORKDIR" \
-    /opt/shared/rocm-pytorch.sif \
-    python -u train_fsdp.py --devices 2 --strategy fsdp --d_model 4096 --num_layers 12
-fi
+srun --mpi=none apptainer exec --rocm \
+  --bind "$WORKDIR:$WORKDIR" --pwd "$WORKDIR" \
+  /opt/shared/rocm-pytorch.sif \
+  python -u train_fsdp.py --devices 2 --strategy fsdp --d_model 4096 --num_layers 12 --seq_len 384 --batch_size 32 --ff_mult 16

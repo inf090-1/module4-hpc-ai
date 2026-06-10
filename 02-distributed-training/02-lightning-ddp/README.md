@@ -176,7 +176,7 @@ sbatch submit_lightning.sh
 
 These submit scripts run inside Apptainer using `/opt/shared/rocm-pytorch.sif`.
 
-Optional: bypass Apptainer and run with your local venv by setting `USE_VENV=1`.
+
 
 ### Via srun (interactive)
 

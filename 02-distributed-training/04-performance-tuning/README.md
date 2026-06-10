@@ -241,19 +241,17 @@ You can visually identify:
 - **Long kernels** (which layer dominates)
 - **Overlap** between CPU and GPU (good — means async is working)
 
-### AMD `rocprof-sys`
+### AMD `rocprofv3`
 
 ```bash
-rocprof-sys --roctx-trace --hip-trace -d output_dir python train_tuning.py
+rocprofv3 --stats --kernel-trace --hip-runtime-trace --memory-copy-trace \
+  --summary --summary-output-file rocprofv3_summary.txt \
+  --output-directory rocprofv3_out \
+  --output-file rocprofv3_out \
+  -f pftrace -- python train_tuning.py
 ```
 
-| Flag | Meaning |
-|------|---------|
-| `--roctx-trace` | Capture ROCTX marker ranges (same API as NVTX) |
-| `--hip-trace` | Trace HIP kernel executions |
-| `-d output_dir` | Save traces to this directory |
-
-Output is in **Perfetto format** (protobuf) — open in Chrome at `chrome://tracing` or use the Perfetto UI at `ui.perfetto.dev`. The timeline view is similar to Nsight Systems.
+`rocprofv3` collects kernel timelines plus runtime/memory-copy activity. With `-f pftrace`, the output can be inspected with the Perfetto workflow.
 
 ### Key Difference: Same API, Different Backends
 
@@ -274,9 +272,9 @@ This means your instrumentation code is **portable** — write it once, profile 
 
 ## Profiling Tools Comparison
 
-| Feature | NVIDIA (`nsys`) | AMD (`rocprof-sys`) |
+| Feature | NVIDIA (`nsys`) | AMD (`rocprofv3`) |
 |---------|-----------------|---------------------|
-| Command | `nsys profile -t cuda,nvtx,osrt --stats=true` | `rocprof-sys --roctx-trace --hip-trace` |
+| Command | `nsys profile -t cuda,nvtx,osrt --stats=true` | `rocprofv3 ... -f pftrace` |
 | Output format | `.nsys-rep` / `.qdrep` | Perfetto protobuf |
 | Viewer | Nsight Systems (desktop) | Perfetto (Chrome), AMD uProf |
 | Kernel tracing | Automatic (CUDA) | Automatic (HIP) |
@@ -306,10 +304,15 @@ python train_tuning.py --batch_size 16 --num_workers 4
 
 With `num_workers=4` and `pin_memory=True`, data loading should no longer bottleneck. The GPU utilization should be much higher — check the `samples/s` metric.
 
-### Experiment 3: Profiling with rocprof-sys (AMD)
+### Experiment 3: Profiling with rocprofv3 (AMD)
 
 ```bash
-rocprof-sys --roctx-trace --hip-trace -d profile_out python train_tuning.py --batch_size 16 --num_workers 4
+rocprofv3 --stats --kernel-trace --hip-runtime-trace --memory-copy-trace \
+  --summary --summary-output-file rocprofv3_summary.txt \
+  --output-directory rocprofv3_out \
+  --output-file rocprofv3_out \
+  -f pftrace -- \
+  python train_tuning.py --batch_size 16 --num_workers 4
 ```
 
 Open the output in Perfetto UI. Look for:
@@ -339,7 +342,7 @@ sbatch submit_tuning.sh
 
 `submit_tuning.sh` runs inside Apptainer (`/opt/shared/rocm-pytorch.sif`).
 
-Optional: bypass Apptainer and run with your local venv by setting `USE_VENV=1`.
+
 
 ### Manual runs
 
@@ -351,7 +354,12 @@ python train_tuning.py --batch_size 8 --num_workers 0 --num_epochs 2
 python train_tuning.py --batch_size 16 --num_workers 4 --num_epochs 2
 
 # Profiling (AMD)
-rocprof-sys --roctx-trace --hip-trace -d profile_out python train_tuning.py --batch_size 16 --num_workers 4 --num_epochs 1
+rocprofv3 --stats --kernel-trace --hip-runtime-trace --memory-copy-trace \
+  --summary --summary-output-file rocprofv3_summary.txt \
+  --output-directory rocprofv3_out \
+  --output-file rocprofv3_out \
+  -f pftrace -- \
+  python train_tuning.py --batch_size 16 --num_workers 4 --num_epochs 1
 
 # Profiling (NVIDIA)
 nsys profile -t cuda,nvtx,osrt --stats=true -o report python train_tuning.py --batch_size 16 --num_workers 4 --num_epochs 1

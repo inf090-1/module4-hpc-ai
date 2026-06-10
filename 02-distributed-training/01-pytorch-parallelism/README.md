@@ -332,7 +332,7 @@ The submit scripts run the training inside Apptainer (`/opt/shared/rocm-pytorch.
 
 `submit_pp.sh` and `submit_tp.sh` additionally load an OpenMPI module because they use `srun --mpi=pmix`.
 
-Optional: you can bypass Apptainer and run with your local venv by setting `USE_VENV=1` when submitting (works for `submit_ddp.sh`, `submit_pp.sh`, and `submit_tp.sh`).
+All runs in this lesson use Apptainer (image `/opt/shared/rocm-pytorch.sif`).
 
 ### Locally (2+ GPUs, no SLURM)
 

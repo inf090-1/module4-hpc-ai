@@ -193,15 +193,17 @@ When you run both scenarios, compare:
 
 The `submit_oom.sh` and `submit_fsdp.sh` scripts run inside Apptainer (`/opt/shared/rocm-pytorch.sif`).
 
-Optional: bypass Apptainer and run with your local venv by setting `USE_VENV=1`.
+
 
 ### Scenario 1: OOM Demo (DDP, 1 GPU)
 
 ```bash
-sbatch submit_oom.sh
+ sbatch submit_oom.sh
 ```
 
 Expected: `torch.cuda.OutOfMemoryError`.
+
+Note: `submit_oom.sh` passes larger `--seq_len`, `--batch_size`, and `--ff_mult` values so the single-GPU run actually exceeds the memory budget and triggers OOM.
 
 ### Scenario 2: FSDP (2 GPUs, sharded)
 

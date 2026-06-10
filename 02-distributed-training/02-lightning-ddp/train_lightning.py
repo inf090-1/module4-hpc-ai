@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 import lightning as L
+from lightning.pytorch.loggers import CSVLogger
 
 class ShakespeareDataset(Dataset):
     def __init__(self, seq_len=64, train=True):
@@ -152,7 +153,7 @@ def main():
         num_nodes=1,
         strategy=strategy,
         max_epochs=args.max_epochs,
-        logger=L.CSVLogger("logs", name="llm_lightning"),
+        logger=CSVLogger("logs", name="llm_lightning"),
     )
 
     trainer.fit(model, train_loader, val_loader)
