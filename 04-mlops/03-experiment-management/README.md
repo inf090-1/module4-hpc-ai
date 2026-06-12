@@ -209,6 +209,14 @@ cd 04-mlops/03-experiment-management
 sbatch submit_checkpoint.sh
 ```
 
+### Step 2b — (Optional) Run DCP-based checkpointing
+
+The repo includes a second training script that uses PyTorch's **Distributed Checkpointing (DCP)** API.
+
+```bash
+sbatch submit_checkpoint_dcp.sh
+```
+
 ### Step 3 — Monitor progress
 
 ```bash
@@ -234,6 +242,20 @@ print('Epoch:', ckpt['epoch'])
 print('Loss:', ckpt['loss'])
 "
 ```
+
+For the DCP version, you should instead see checkpoint *directories* under `./checkpoints_dcp/` (one per epoch plus a `latest/` directory), containing multiple files (one per rank/shard plus metadata).
+
+---
+
+## Comparison: Rank-0 `torch.save` vs DCP
+
+| Aspect | `train_checkpoint.py` (rank 0 only) | `train_checkpoint_dcp.py` (DCP) |
+|---|---|---|
+| Checkpoint call site | `save_checkpoint(...)` runs only on `rank == 0` | `dcp.save(...)` and `dcp.load(...)` run on all ranks |
+| Typical use case | DDP (each rank has a full model replica) | Sharded training (e.g., FSDP) and any case where ranks hold different parameter shards |
+| Output format | Single `*.pt` file (one checkpoint file) | Checkpoint directory with multiple files (one per rank/shard) plus metadata |
+| Why you need it | Prevents concurrent ranks from overwriting/corrupting the same file | Coordinates writing/reading of distributed state and supports resharding across topologies |
+| Resume behavior | `torch.load(path)` reads one file | DCP loads distributed state in-place using pre-allocated storage from the current model |
 
 ---
 
