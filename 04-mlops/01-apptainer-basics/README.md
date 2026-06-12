@@ -230,7 +230,7 @@ apptainer build --sandbox sandbox/ image.sif
 
 ```bash
 # On the INF0090 cluster
-module load apptainer/1.4.1-gcc-11.5.0-linux-rocky9-ivybridge-olpavna
+module load apptainer
 
 # Verify it works
 apptainer --version
@@ -259,7 +259,7 @@ From: rocm/pytorch:latest
 
 > **Reference**: [Apptainer Definition Files](https://docs.sylabs.io/guides/latest/user-guide/build_a_container.html) — all sections of a `.def` file (`%post`, `%runscript`, `%environment`, `%labels`, etc.)
 
-### Step 3 — Set up a build cache (first time only)
+### Step 3 (optional) — Set up a build cache (first time only)
 
 Building pulls a ~5 GB base image. Cache it on `/scratch` to avoid filling `/home`:
 
@@ -286,7 +286,7 @@ This creates `pytorch-rocm.sif` — an **immutable SquashFS image**. You can cop
 
 ```bash
 # Start an interactive shell inside the container
-apptainer exec --rocm \
+srun -N 1 -p gpu apptainer exec --rocm \
   --bind .:/workspace \
   --pwd /workspace \
   pytorch-rocm.sif \
@@ -319,7 +319,7 @@ Open `submit_container.sh`:
 #SBATCH --time=00:10:00
 #SBATCH --output=%j.out
 
-module load apptainer/1.4.1-gcc-11.5.0-linux-rocky9-ivybridge-olpavna
+module load apptainer
 
 apptainer exec --rocm \
   --bind $PWD:/workspace \

@@ -17,7 +17,7 @@ else
     exit 1
 fi
 
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
 CONTAINER_IMAGE="${SCRIPT_DIR}/pytorch-rocm.sif"
 
 if [ ! -f "$CONTAINER_IMAGE" ]; then
@@ -32,13 +32,14 @@ echo "Image: $CONTAINER_IMAGE"
 echo "GPUs: $SLURM_GPUS_ON_NODE"
 echo ""
 
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+echo $REPO_ROOT
 
 $CONTAINER_CMD exec --rocm \
     --bind "${REPO_ROOT}:/workspace" \
-    --pwd /workspace \
+    --pwd /workspace/02-distributed-training/02-lightning-ddp/ \
     "$CONTAINER_IMAGE" \
-    python /workspace/02-distributed-training/02-lightning-ddp/train_lightning.py \
+    python -u train_lightning.py \
         --devices 1 \
         --strategy auto \
         --max_epochs 2
