@@ -143,7 +143,7 @@ module avail 2>&1 | grep -i rocm
 
 ```bash
 # Load Python
-module load python/3.13.1-gcc-11.5.0-linux-rocky9-ivybridge-33kdykh
+module load python
 
 # Activate the ROCm virtual environment
 source ~/venv-pytorch-rocm/bin/activate
@@ -158,7 +158,7 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 ```bash
 # Load CUDA toolkit
 module load cuda/12.1
-module load python/3.13.1-gcc-11.5.0-linux-rocky9-ivybridge-33kdykh
+module load python
 
 # Activate the CUDA virtual environment
 source ~/venv-pytorch-cuda/bin/activate
@@ -238,7 +238,7 @@ apptainer exec --nv pytorch-cuda.sif python train.py
 #SBATCH --gpus=1
 #SBATCH --time=00:10:00
 
-module load apptainer/1.4.1-gcc-11.5.0-linux-rocky9-ivybridge-olpavna
+module load apptainer
 
 # Detect GPU vendor from SLURM
 if nvidia-smi > /dev/null 2>&1; then
