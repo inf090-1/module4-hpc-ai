@@ -116,20 +116,20 @@ By the end of this lesson you will be able to:
 
 ### Step 1 — Provide the dataset
 
-This example uses the **German Credit dataset**. You need to place the CSV file in the data directory:
+This example uses the **german_credit_data** dataset from Kaggle. You need to place the CSV file in the data directory:
 
 ```bash
 # Download the dataset (or use your own)
 # The file should be named: german_credit_data.csv
 # Place it at: cred_analysis_app/data/german_credit_data.csv
 
-# Example using wget (if available):
-# wget -O cred_analysis_app/data/german_credit_data.csv <url-to-dataset>
+# Example download page:
+# https://www.kaggle.com/datasets/varunchawla30/german-credit-data
 ```
 
 The dataset should have columns like `laufkont`, `laufzeit`, `moral`, etc. (German column names) which will be mapped to English names during training.
 
-> **Reference**: [German Credit Dataset](https://archive.ics.uci.edu/ml/datasets/statlog+(german+credit+data)) — UCI Machine Learning Repository.
+> **Reference**: [german_credit_data](https://www.kaggle.com/datasets/varunchawla30/german-credit-data) — Kaggle dataset used by this lesson.
 
 ### Step 2 — Start the services
 

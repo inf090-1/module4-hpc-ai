@@ -14,3 +14,4 @@ mlflow.db
 .vscode/
 data/
 !cred_analysis_app/data/.keep
+!cred_analysis_app/data/german_credit_data.csv
