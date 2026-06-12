@@ -15,7 +15,7 @@ Role in the System Architecture:
 
     Where it fits:
         [data/german_credit_data.csv] ──┐
-                                        ├──► monitoring.py ──► drift_report.html
+                                        ├──► monitoring.py ──► data/drift_report.html
         [data/production_logs.csv]   ───┘
                   ▲
            (written by api.py)
@@ -25,15 +25,16 @@ Role in the System Architecture:
     It is executed inside the app-service Docker container or locally.
 """
 
-import pandas as pd
-from evidently.report import Report
-from evidently.metric_preset import DataDriftPreset
 import os
+import pandas as pd
+from evidently import Report
+from evidently.presets import DataDriftPreset
 
 # Configuration
-REFERENCE_DATA_PATH = "/app/data/german_credit_data.csv"
-CURRENT_DATA_PATH = "/app/data/production_logs.csv"
-REPORT_OUTPUT_PATH = "/app/data/drift_report.html"
+DATA_DIR = os.getenv("DATA_DIR", "data")
+REFERENCE_DATA_PATH = os.getenv("REFERENCE_DATA_PATH", os.path.join(DATA_DIR, "german_credit_data.csv"))
+CURRENT_DATA_PATH = os.getenv("CURRENT_DATA_PATH", os.path.join(DATA_DIR, "production_logs.csv"))
+REPORT_OUTPUT_PATH = os.getenv("REPORT_OUTPUT_PATH", os.path.join(DATA_DIR, "drift_report.html"))
 
 # Mapping to ensure Reference Matches Current (English proper names)
 # Note: production_logs.csv already has English headers from the API payload
@@ -107,10 +108,10 @@ def generate_report(reference, current):
         DataDriftPreset(),
     ])
     
-    report.run(reference_data=reference, current_data=current)
+    snapshot = report.run(current_data=current, reference_data=reference)
     
     print(f"Saving report to {REPORT_OUTPUT_PATH}...")
-    report.save_html(REPORT_OUTPUT_PATH)
+    snapshot.save_html(REPORT_OUTPUT_PATH)
     print("Done!")
 
 if __name__ == "__main__":

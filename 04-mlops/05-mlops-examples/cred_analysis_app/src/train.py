@@ -96,20 +96,11 @@ def main():
     print("Loading data...")
     df = load_data()
     
-    # Target column in OpenML credit-g is 'class' ('good', 'bad')
     target_col = 'class'
     
     # Separate features and target
     X = df.drop(columns=[target_col])
     y = df[target_col]
-
-    # Target in german_credit_data.csv is 'class' (mapped from 'kredit'), already 0/1.
-    # We will keep it as is. 
-    # Typically in this dataset: 1 = Good, 0 = Bad (or sometimes 1/2). 
-    # Let's inspect unique values if needed, but assuming 0/1 from user context.
-    # If the CSV has 1 and 2 (common in Statlog), we might need to map. 
-    # But user said "1=Good, 0=Bad". We trust the user/CSV.
-    pass
 
     # Identify categorical and numerical columns
     categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
@@ -165,16 +156,15 @@ def main():
         mlflow.log_param("n_estimators", 100)
         mlflow.log_param("model_type", "RandomForestClassifier")
         
-        # Log Model
-        # Using sklearn autolog logic or manual log_model
         signature = mlflow.models.infer_signature(X_train, pipeline.predict(X_train))
         
-        mlflow.sklearn.log_model(
+        logged_model = mlflow.sklearn.log_model(
             sk_model=pipeline,
-            artifact_path="model",
+            name="model",
             signature=signature,
-            registered_model_name="CreditRiskModel"
         )
+
+        mlflow.register_model(logged_model.model_uri, "CreditRiskModel")
         
         print("Model logged to MLflow.")
 

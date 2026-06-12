@@ -24,15 +24,16 @@ Role in the System Architecture:
         python simulate_traffic.py
 """
 
+import os
 import pandas as pd
 import requests
 import time
 import random
 
 # Configuration
-DATA_PATH = "cred_analysis_app/data/german_credit_data.csv"
-API_URL = "http://localhost:8001/predict"
-DELAY = 0.5  # Seconds between requests
+DATA_PATH = os.getenv("DATA_PATH", "cred_analysis_app/data/german_credit_data.csv")
+API_URL = os.getenv("API_URL", "http://localhost:8001/predict")
+DELAY = float(os.getenv("DELAY", "0.5"))  # Seconds between requests
 
 # Column Mapping (German -> English) to match API schema
 COLUMN_MAPPING = {

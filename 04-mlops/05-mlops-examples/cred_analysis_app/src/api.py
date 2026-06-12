@@ -33,7 +33,7 @@ import mlflow.pyfunc
 import csv
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, create_model
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict, Any
 
 app = FastAPI(title="Credit Risk Classification API")
@@ -58,35 +58,35 @@ model = None
 # Using a generic dict approach for flexibility with the German Credit dataset columns
 # but ideally should be explicit.
 class CreditApplication(BaseModel):
-    checking_status: Optional[str]
-    duration: Optional[int]
-    credit_history: Optional[str]
-    purpose: Optional[str]
-    credit_amount: Optional[int]
-    savings_status: Optional[str]
-    employment: Optional[str]
-    installment_commitment: Optional[int]
-    personal_status: Optional[str]
-    other_parties: Optional[str]
-    residence_since: Optional[int]
-    property_magnitude: Optional[str]
-    age: Optional[int]
-    other_payment_plans: Optional[str]
-    housing: Optional[str]
-    existing_credits: Optional[int]
-    job: Optional[str]
-    num_dependents: Optional[int]
-    own_telephone: Optional[str]
-    foreign_worker: Optional[str]
+    model_config = ConfigDict(extra="allow")
 
-    class Config:
-        extra = "allow" 
+    checking_status: Optional[str | int] = None
+    duration: Optional[int] = None
+    credit_history: Optional[str | int] = None
+    purpose: Optional[str | int] = None
+    credit_amount: Optional[int] = None
+    savings_status: Optional[str | int] = None
+    employment: Optional[str | int] = None
+    installment_commitment: Optional[int] = None
+    personal_status: Optional[str | int] = None
+    other_parties: Optional[str | int] = None
+    residence_since: Optional[int] = None
+    property_magnitude: Optional[str | int] = None
+    age: Optional[int] = None
+    other_payment_plans: Optional[str | int] = None
+    housing: Optional[str | int] = None
+    existing_credits: Optional[int] = None
+    job: Optional[str | int] = None
+    num_dependents: Optional[int] = None
+    own_telephone: Optional[str | int] = None
+    foreign_worker: Optional[str | int] = None
 
-@app.on_event("startup")
-def load_model():
+def ensure_model_loaded():
     global model
+    if model is not None:
+        return model
+
     try:
-        # Set tracking URI so it knows where to look
         mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
         print(f"Loading model from {MODEL_URI}...")
         model = mlflow.pyfunc.load_model(MODEL_URI)
@@ -94,6 +94,8 @@ def load_model():
     except Exception as e:
         print(f"Error loading model: {e}")
         print("WARNING: API starting without model. Predictions will fail.")
+
+    return model
 
 @app.get("/health")
 def health_check():
@@ -124,15 +126,34 @@ def log_prediction(input_data: Dict[str, Any], prediction: int, probability: Opt
 
 @app.post("/predict")
 def predict(application: CreditApplication):
-    if not model:
+    current_model = ensure_model_loaded()
+    if not current_model:
         raise HTTPException(status_code=503, detail="Model not loaded")
     
-    input_data = application.dict()
+    input_data = application.model_dump()
     df = pd.DataFrame([input_data])
+    categorical_cols = [
+        "checking_status",
+        "credit_history",
+        "purpose",
+        "savings_status",
+        "employment",
+        "personal_status",
+        "other_parties",
+        "property_magnitude",
+        "other_payment_plans",
+        "housing",
+        "job",
+        "own_telephone",
+        "foreign_worker",
+    ]
+    for col in categorical_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str)
     
     try:
         # Predict
-        prediction = model.predict(df)
+        prediction = current_model.predict(df)
         result = int(prediction[0])
         
         # Log data

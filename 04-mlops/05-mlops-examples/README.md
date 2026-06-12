@@ -144,6 +144,8 @@ This starts:
 - **MLflow UI** at `http://localhost:5001`
 - **API Endpoint** at `http://localhost:8001`
 
+If the MLflow UI shows `Invalid Host header - possible DNS rebinding attack detected`, restart the compose stack after using the updated `--allowed-hosts` setting in `docker-compose.yml`. The browser sends `localhost:5001` as the Host header, so that exact value must be allowed.
+
 ### Step 3 — Train the model
 
 ```bash
@@ -164,11 +166,13 @@ Model logged to MLflow.
 
 ### Step 4 — Restart the API to load the new model
 
-The API loads the model only at startup, so restart it after training:
+If the API was already running before training, restart it so it reloads the newest registered model:
 
 ```bash
 docker compose restart app-service
 ```
+
+If the API is fresh and has not loaded a model yet, the first `/predict` request will load the registered model automatically.
 
 ### Step 5 — Test the API
 
@@ -272,7 +276,7 @@ The report shows which features drifted and the statistical significance of the 
 
 ### `api.py` — Model Serving
 
-1. At startup, loads the latest model from MLflow Model Registry
+1. Loads the latest model from MLflow Model Registry on the first prediction request
 2. Exposes `POST /predict` endpoint that accepts credit application JSON
 3. Returns risk prediction (Good Risk / Bad Risk)
 4. Logs every prediction to `production_logs.csv` for monitoring
@@ -296,7 +300,7 @@ The report shows which features drifted and the statistical significance of the 
 
 | Service | Image | Port | Purpose |
 |---------|-------|------|---------|
-| `mlflow-server` | `ghcr.io/mlflow/mlflow:v2.12.2` | 5001 | MLflow tracking + model registry |
+| `mlflow-server` | `ghcr.io/mlflow/mlflow:v3.13.0` | 5001 | MLflow tracking + model registry |
 | `app-service` | Built from `cred_analysis_app/Dockerfile` | 8001 | FastAPI inference server |
 
 ### Volumes

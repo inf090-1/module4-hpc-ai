@@ -5,7 +5,7 @@
 #   into a Docker image called "app-service".
 #
 #   Steps performed at build time:
-#   1. Starts from a minimal Python 3.9 base image.
+#   1. Starts from a minimal Python 3.12 base image.
 #   2. Installs OS-level dependencies required by Evidently AI (tkinter/tk).
 #   3. Installs all Python dependencies listed in requirements.txt.
 #   4. Copies the full application source code into the image.
@@ -19,7 +19,7 @@
 #       Dockerfile ──► docker build ──► app-service image
 #                                            └──► docker-compose up ──► running API
 
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
