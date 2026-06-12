@@ -23,11 +23,11 @@ By the end of this lesson you will be able to:
 
 | Tool | What It Does | Where It Lives |
 |------|-------------|---------------|
-| **MLflow** | Open-source experiment tracking and model registry | Python package (`pip install mlflow`) |
-| **MLflow Tracking Server** | Central server storing runs, metrics, artifacts | Login node or dedicated server |
-| **SQLite** | Lightweight database for MLflow backend (dev/test) | Local filesystem |
-| **PyTorch** | Deep learning framework | Compute node |
-| **SLURM** | HPC job scheduler | Cluster |
+| **MLflow** | Open-source experiment tracking and model registry | Your Python virtual environment |
+| **MLflow Tracking Server** | Local server storing runs, metrics, artifacts | `http://127.0.0.1:5000` |
+| **SQLite** | Lightweight backend database for the demo | Project directory (`mlflow.db`) |
+| **PyTorch** | Deep learning framework | Your local CPU or GPU |
+| **Jupyter** | Notebook interface for the walkthrough | Your local browser/kernel |
 
 > **Reference**: [MLflow Documentation](https://mlflow.org/docs/latest/index.html) — official docs covering all features.
 > **Reference**: [MLflow Quickstart](https://mlflow.org/docs/latest/getting-started/index.html) — minimal working example.
@@ -122,25 +122,41 @@ MLflow consists of four main components that work together:
 
 ---
 
-## Step-by-Step: Setting Up MLflow
+## Step-by-Step: Setting Up MLflow Locally
 
-### Step 1 — Install MLflow
+### Step 1 — Create a virtual environment and install PyTorch
 
 ```bash
-# On the cluster, activate your PyTorch environment
-source ~/venv-pytorch-rocm/bin/activate
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate
 
-# Install MLflow
-pip install mlflow
+# Upgrade packaging tools
+python -m pip install --upgrade pip setuptools wheel
+
+# CPU-only PyTorch
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# NVIDIA GPU example (CUDA 12.1)
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# AMD GPU example: use the official PyTorch selector for your ROCm version
+# https://pytorch.org/get-started/locally/
+
+# Install the rest of the notebook/demo dependencies
+pip install mlflow jupyter ipykernel
+
+# Optional: register this environment as a Jupyter kernel
+python -m ipykernel install --user --name 04-mlflow-tracking --display-name "Python (04-mlflow-tracking)"
 ```
 
-### Step 2 — Start the tracking server
+### Step 2 — Start the tracking server on your machine
 
-Run this on the **login node** (not a compute node) in a separate terminal:
+Run this in a separate terminal from the project directory:
 
 ```bash
 mlflow server \
-  --host 0.0.0.0 \
+  --host 127.0.0.1 \
   --port 5000 \
   --backend-store-uri sqlite:///mlflow.db \
   --default-artifact-root ./artifacts
@@ -149,7 +165,7 @@ mlflow server \
 **Flags explained:**
 | Flag | What It Does |
 |------|-------------|
-| `--host 0.0.0.0` | Listen on all interfaces (so compute nodes can reach it) |
+| `--host 127.0.0.1` | Listen only on your machine |
 | `--port 5000` | Port number |
 | `--backend-store-uri sqlite:///mlflow.db` | Use SQLite database (simple, no server needed) |
 | `--default-artifact-root ./artifacts` | Where to store model files, plots, etc. |
@@ -158,41 +174,43 @@ For production, replace SQLite with a real database (PostgreSQL) and use S3/MinI
 
 > **Reference**: [MLflow Tracking Server](https://mlflow.org/docs/latest/tracking/server.html) — server configuration options.
 
-### Step 3 — Set the tracking URI
+### Step 3 — Set the tracking URI in your shell or notebook
 
-On the **compute node** (before submitting jobs):
+Use the local server from your shell or notebook:
 
 ```bash
-# Replace <login-node> with your login node's hostname or IP
-export MLFLOW_TRACKING_URI=http://<login-node>:5000
+# Shell session
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 
-# Verify connectivity
+# Verify connectivity from Python
 python -c "import mlflow; print(mlflow.get_tracking_uri())"
-# Should print: http://<login-node>:5000
+# Should print: http://127.0.0.1:5000
 ```
 
 ### Step 4 — Open the web UI
 
 In your local browser:
 ```
-http://<login-node>:5000
+http://127.0.0.1:5000
 ```
 
 You'll see the MLflow dashboard with experiments, runs, and comparisons.
 
 ---
 
-## Step-by-Step: Logging an Experiment
+## Step-by-Step: Logging an Experiment from Your Machine
 
 ### Minimal Example
 
 ```python
+import os
 import mlflow
+import mlflow.pytorch
 import torch
 import torch.nn as nn
 
-# Connect to the tracking server
-mlflow.set_tracking_uri("http://<login-node>:5000")
+# Connect to the local tracking server
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000"))
 
 # Create or retrieve an experiment
 mlflow.set_experiment("TinyLLM Training")
@@ -219,21 +237,36 @@ with mlflow.start_run(run_name="lr_0.001_bs_32"):
         # Log metrics (with step for time series)
         mlflow.log_metric("train_loss", train_loss, step=epoch)
 
-    # Log the model
-    mlflow.pytorch.log_model(model, "model")
+    # Log the model using the logged-model API
+    logged_model = mlflow.pytorch.log_model(model, name="model")
 
     # Log a text artifact
     mlflow.log_text(f"Best loss: {train_loss:.4f}", "summary.txt")
 
+    # Register the logged model by its model URI
+    mlflow.register_model(logged_model.model_uri, "TinyLLM")
+
 print("Run complete — check MLflow UI!")
 ```
+
+### Notebook Version
+
+The same flow is captured in `mlflow_demo.ipynb` so you can train, log metrics, register the model, and inspect the results directly from Jupyter.
 
 ### What Gets Logged
 
 After running this, in the MLflow UI you'll see:
 - **Parameters tab**: `learning_rate=0.001`, `batch_size=32`, `epochs=10`
 - **Metrics tab**: `train_loss` plotted over 10 steps (you can zoom, compare)
-- **Artifacts tab**: `model/` directory with PyTorch model files, `summary.txt`
+ - **Artifacts tab**: logged model files and `summary.txt`
+
+### Recommended Notebook Flow
+
+1. Start `mlflow server` in a terminal on your machine.
+2. Open `mlflow_demo.ipynb` in Jupyter Lab or Notebook.
+3. Run the cells that create the dataset, train the PyTorch model, and log params and metrics.
+4. Open `http://127.0.0.1:5000` to compare the run.
+5. Use the notebook cells that register the model and load it back for inference.
 
 ---
 
@@ -250,11 +283,12 @@ In DDP/FSDP, multiple processes run on different GPUs. If all of them log to MLf
 
 ```python
 import mlflow
+import mlflow.pytorch
 import torch.distributed as dist
 
 def setup_mlflow():
     """Initialize MLflow — call once at startup."""
-    mlflow.set_tracking_uri("http://<login-node>:5000")
+    mlflow.set_tracking_uri("http://127.0.0.1:5000")
     mlflow.set_experiment("DistributedTraining")
 
 def get_rank():
@@ -282,7 +316,7 @@ with mlflow.start_run(run_name=f"ddp_run_{rank}"):
 
     # Only rank 0 logs the model
     if rank == 0:
-        mlflow.pytorch.log_model(model, "model")
+        logged_model = mlflow.pytorch.log_model(model, name="model")
 ```
 
 > **Key point**: `mlflow.start_run()` must be called by all ranks (it's a context manager), but only rank 0 should call `log_param`, `log_metric`, and `log_model`.
@@ -301,7 +335,7 @@ with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, full_cfg):
 
 if rank == 0:
     # Now you have the full model on rank 0 — safe to log
-    mlflow.pytorch.log_model(model, "model")
+    logged_model = mlflow.pytorch.log_model(model, name="model")
 ```
 
 > **Reference**: [PyTorch FSDP State Dict](https://pytorch.org/docs/stable/fsdp.html#torch.distributed.fsdp.FullStateDictConfig) — `rank0_only` parameter.
@@ -311,6 +345,8 @@ if rank == 0:
 ## Step-by-Step: Using the Model Registry
 
 The Model Registry lets you version models and manage their lifecycle (e.g., "this model is ready for production").
+
+> **Note**: MLflow 3 still supports model stages, but it warns that stages are deprecated. This lesson keeps the stage-based flow so the registry lifecycle remains easy to follow.
 
 ### Model Registry Lifecycle
 
@@ -354,13 +390,14 @@ The Model Registry lets you version models and manage their lifecycle (e.g., "th
 
 ```python
 import mlflow
+import mlflow.pytorch
 from mlflow import MlflowClient
 
 client = MlflowClient()
 
 # After logging a model in a run, register it
-run_id = mlflow.active_run().info.run_id
-model_uri = f"runs:/{run_id}/model"
+logged_model = mlflow.pytorch.log_model(model, name="model")
+model_uri = logged_model.model_uri
 
 # Register under a model name
 model_version = mlflow.register_model(model_uri, "TinyLLM")
@@ -415,7 +452,7 @@ In the MLflow UI, navigate to **Models → TinyLLM** to see:
 
 | Command | Purpose |
 |---------|---------|
-| `mlflow server --host 0.0.0.0 --port 5000` | Start tracking server |
+| `mlflow server --host 127.0.0.1 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./artifacts` | Start local tracking server |
 | `mlflow experiments create "Experiment Name"` | Create experiment via CLI |
 | `mlflow runs list --experiment-id 1` | List runs in an experiment |
 | `mlflow ui` | Launch local web UI (for local SQLite) |
